@@ -39,6 +39,16 @@ public:
         return std::clamp(initial + (startY_ - y) / (height_ * 0.6f), minimum, 1.0f);
     }
 
+    // The volume swipe spans 0..kMaxVolume percent (mpv `volume-max`); above 100% mpv amplifies.
+    static constexpr int kMaxVolume = 200;
+    static float volumeFraction(double percent) {
+        if (!std::isfinite(percent)) return 0;
+        return static_cast<float>(std::clamp(percent / kMaxVolume, 0.0, 1.0));
+    }
+    static int volumePercent(float fraction) {
+        return static_cast<int>(std::lround(std::clamp(fraction, 0.0f, 1.0f) * kMaxVolume));
+    }
+
     void cancel() { candidate_ = control_ = Control::None; }
     Control control() const { return control_; }
 

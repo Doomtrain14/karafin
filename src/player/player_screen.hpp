@@ -164,6 +164,7 @@ private:
     void drawVideo(ui::Renderer& r);
     void drawBackdrop(ui::Renderer& r);
     void drawTopBar(ui::Renderer& r, float a);
+    void drawTags(ui::Renderer& r, ui::Vec2 at);
     void drawBottomBar(ui::Renderer& r, float a);
     void drawSeekPreview(ui::Renderer& r, float a);
     void drawCenter(ui::Renderer& r);
@@ -173,6 +174,7 @@ private:
     void drawInfoOverlay(ui::Renderer& r);
     void drawAdjustment(ui::Renderer& r);
     void refreshInfo();
+    void refreshTags();
     void runHit(HitAction action);
     ui::Rect seekBarRect() const;
     double positionFromX(float x) const;
@@ -315,6 +317,15 @@ private:
         gfx::TextLayoutPtr value;
     };
     std::vector<InfoLine> infoLines_;
+    // Stream tags in the top bar (play method, resolution, codecs); refreshed while the OSD shows.
+    struct OsdTag {
+        std::string text;
+        bool playMethod = false;
+        bool transcoding = false;
+        gfx::TextLayoutPtr layout;
+    };
+    std::vector<OsdTag> osdTags_;
+    double tagsTimer_ = 0;
     std::vector<HitArea> hits_;
     gfx::ImagePtr backdrop_;
     gfx::ImagePtr logo_;

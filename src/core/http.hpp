@@ -80,6 +80,9 @@ struct Request {
     bool verifyTls = true;
     bool acceptCompressed = true;  // Accept-Encoding: gzip/deflate (disable for Range downloads)
     size_t maxBodyBytes = 32u * 1024 * 1024;
+    // Bulk traffic such as artwork. Only a few background transfers run at once, so API calls
+    // always find a free connection instead of timing out behind a screenful of posters.
+    bool background = false;
 
     // Streaming sink. When set, the body is not buffered in Response::body. Runs on the
     // transferring thread. Return false to abort (Error::Aborted).

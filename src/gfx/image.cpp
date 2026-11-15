@@ -340,6 +340,7 @@ struct ImageCacheAccess {
         r.timeoutMs = 30000;
         r.maxBodyBytes = 24u * 1024 * 1024;
         r.cancel = cancel;
+        r.background = true;
         const bool cacheToDisk = req.diskCache;
         http::Client::instance().send(
             std::move(r),

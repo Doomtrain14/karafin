@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -183,6 +184,10 @@ private:
     std::string token_;
     std::string deviceId_;
     std::atomic<bool> offline_{false};
+    std::atomic<int> failStreak_{0};
+    std::atomic<int64_t> lastReachableMs_{0};  // steady clock; 0 = never reached
+    static constexpr int kOfflineFailureStreak = 3;
+    static constexpr int64_t kOfflineGraceMs = 15000;
     std::function<void()> onUnauthorized_;
     std::function<void(bool)> onConnectivity_;
 };

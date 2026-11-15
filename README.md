@@ -61,6 +61,8 @@ offline viewing with pause and resume.
   - Skip intro, recap and credits (Jellyfin 10.10+ media segments), and up-next autoplay for
     episodes.
   - Chapters, playback speed, aspect ratio and zoom, and a playback info overlay.
+  - Stream tags on the controls: Direct Play, Direct Stream or Transcoding, plus resolution and
+    the video and audio codecs.
   - Handheld touch gestures: swipe vertically on the left for screen brightness or on the
     right for playback volume, with on-screen level indicators.
   - Movie or series logo in the upper-left player controls, when provided by the server.
@@ -153,7 +155,7 @@ The button names below are the Nintendo labels: A is the right face button and B
 | B | Cancel the seek preview, hide the controls, then leave the player |
 | Touch | Tap to show the controls and press on-screen buttons. Drag on the seek bar to scrub |
 | Swipe up / down on the left | Raise / lower screen brightness (handheld). The original brightness and automatic brightness setting are restored when leaving playback or opening HOME |
-| Swipe up / down on the right | Raise / lower playback volume (0-100%, independent of the console's volume buttons) |
+| Swipe up / down on the right | Raise / lower playback volume (0-200%, independent of the console's volume buttons; above 100% boosts quiet audio) |
 
 For series, the next-episode card appears near the end or during credits and counts down
 10 seconds before autoplay. The countdown continues if the episode ends, and waits while

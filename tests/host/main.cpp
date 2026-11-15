@@ -13,6 +13,7 @@
 #include "downloads/downloads.hpp"
 #include "downloads/detail/manager_impl.hpp"
 #include "jellyfin/jellyfin.hpp"
+#include "player/media_tags.hpp"
 #include "player/swipe.hpp"
 #include "player/up_next.hpp"
 
@@ -41,7 +42,12 @@ bool playbackControlsTest(std::string& report) {
     swipe.begin(1000, 360, 1280, 720, false);
     ok &= check(swipe.move(1000, 500) == Control::Volume, "right vertical swipe");
     ok &= check(swipe.value(1000, 0.2f, 0) == 0, "volume can reach mute");
-    ok &= check(swipe.value(-1000, 0.2f, 0) == 1, "volume cannot amplify above 100%");
+    ok &= check(swipe.value(-1000, 0.2f, 0) == 1, "volume swipe range is capped");
+    ok &= check(PlaybackSwipe::volumePercent(1) == 200 && PlaybackSwipe::volumePercent(0.5f) == 100,
+                "volume swipe spans 0-200%");
+    ok &= check(PlaybackSwipe::volumeFraction(150) == 0.75f && PlaybackSwipe::volumeFraction(500) == 1 &&
+                    PlaybackSwipe::volumeFraction(std::nan("")) == 0,
+                "player volume maps back onto the swipe range");
     swipe.begin(200, 360, 1280, 720, true);
     ok &= check(swipe.move(200, 100) == Control::None, "seek bar and buttons exclude swipes");
     swipe.begin(200, 360, 1280, 720, false);
@@ -72,7 +78,20 @@ bool playbackControlsTest(std::string& report) {
     ok &= check(timer.remaining() == 0 && !timer.tick(20, true), "disabled autoplay has no countdown");
     timer.start(true);
     ok &= check(timer.remaining() == 10 && !timer.tick(9, true), "next episode gets a fresh countdown");
-    if (ok) report = "swipe controls and episode countdown";
+
+    ok &= check(player::videoCodecLabel("hevc", "p010") == "HEVC 10-bit", "hardware 10-bit HEVC tag");
+    ok &= check(player::videoCodecLabel("h264", "nv12") == "H.264", "nv12 is 8-bit");
+    ok &= check(player::videoCodecLabel("vp9", "yuv420p10le") == "VP9 10-bit", "software 10-bit tag");
+    ok &= check(player::videoCodecLabel("", "yuv420p").empty(), "no video, no tag");
+    ok &= check(player::resolutionLabel(3840, 1600) == "4K", "letterboxed 4K");
+    ok &= check(player::resolutionLabel(1920, 800) == "1080p", "letterboxed 1080p");
+    ok &= check(player::resolutionLabel(720, 480) == "480p", "SD resolution");
+    ok &= check(player::resolutionLabel(0, 0).empty(), "unknown resolution");
+    ok &= check(player::audioCodecLabel("eac3", 6) == "EAC3 5.1", "surround audio tag");
+    ok &= check(player::audioCodecLabel("aac", 2) == "AAC Stereo", "stereo audio tag");
+    ok &= check(player::audioCodecLabel("dts", 8) == "DTS 7.1", "DTS 7.1 tag");
+    ok &= check(player::audioCodecLabel("pcm_s16le", 0) == "PCM", "PCM without channel count");
+    if (ok) report = "swipe controls, episode countdown and stream tags";
     return ok;
 }
 

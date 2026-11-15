@@ -11,6 +11,7 @@
 #include "core/log.hpp"
 #include "gfx/icons.hpp"
 #include "gfx/text.hpp"
+#include "player/media_tags.hpp"
 #include "player/player_screen.hpp"
 #include "ui/hint_bar.hpp"
 #include "ui/root.hpp"
@@ -167,11 +168,12 @@ bool PlayerScreen::onTouchEvent(const SDL_Event& e) {
                             swipe_.cancel();
                             return true;
                         }
-                        swipeInitial_ = static_cast<float>(std::clamp(*value / 100.0, 0.0, 1.0));
+                        swipeInitial_ = PlaybackSwipe::volumeFraction(*value);
                     }
                 }
                 const float value = swipe_.value(p.y, swipeInitial_, brightness ? 0.05f : 0.0f);
-                const int percent = static_cast<int>(std::round(value * 100));
+                const int percent = brightness ? static_cast<int>(std::round(value * 100))
+                                               : PlaybackSwipe::volumePercent(value);
                 const std::string label = std::format("{}%", percent);
                 if (before == PlaybackSwipe::Control::None || label != adjustmentLabel_) {
                     bool ok = false;
@@ -295,6 +297,11 @@ void PlayerScreen::drawAdjustment(ui::Renderer& r) {
     const float value = std::clamp(adjustmentValue_, 0.0f, 1.0f);
     r.fillRoundRect(track, 4, theme::color::progressTrack);
     r.fillRoundRect({track.x, track.bottom() - track.h * value, track.w, track.h * value}, 4, theme::accentGradient);
+    if (!adjustingBrightness_) {
+        // Marks 100%; above it mpv amplifies the audio.
+        const float unity = track.bottom() - track.h * PlaybackSwipe::volumeFraction(100);
+        r.fillRoundRect({track.x - 6, unity - 1, track.w + 12, 2}, 1, Color::white(0.7f));
+    }
     const Rect icon{box.center().x - 14, box.bottom() - 48, 28, 28};
     if (adjustingBrightness_) {
         const Vec2 c = icon.center();
@@ -350,9 +357,14 @@ void PlayerScreen::drawTopBar(ui::Renderer& r, float a) {
                                               theme::type::title2, {.maxWidth = maxW})) {
         r.drawText(*l, {textX, 32}, theme::color::textPrimary);
     }
+    float lineBottom = logo ? 24.0f + 64.0f : 62.0f;
     if (!subtitleLine_.empty())
-        if (const auto* l = subtitleText_.get(subtitleLine_, theme::type::subhead, {.maxWidth = maxW}))
-            r.drawText(*l, {textX, logo ? 96.0f : 62.0f}, theme::color::textSecondary);
+        if (const auto* l = subtitleText_.get(subtitleLine_, theme::type::subhead, {.maxWidth = maxW})) {
+            const float y = logo ? 96.0f : 62.0f;
+            r.drawText(*l, {textX, y}, theme::color::textSecondary);
+            lineBottom = y + l->height;
+        }
+    drawTags(r, {textX, lineBottom + 10});
 
     const float right = theme::layout::screenWidth - kMargin;
     if (const auto* l = clockLayout_.get(clockText_, theme::type::title3))
@@ -363,6 +375,24 @@ void PlayerScreen::drawTopBar(ui::Renderer& r, float a) {
 
     r.popTransform();
     r.popAlpha();
+}
+
+void PlayerScreen::drawTags(ui::Renderer& r, Vec2 at) {
+    constexpr float h = 24, padX = 9, gap = 6;
+    float x = at.x;
+    for (const auto& tag : osdTags_) {
+        if (!tag.layout) continue;
+        const Rect chip{x, at.y, tag.layout->width + padX * 2, h};
+        Color fill = Color::white(0.14f), text = theme::color::textPrimary;
+        if (tag.playMethod) {
+            const Color tint = tag.transcoding ? theme::color::warning : theme::color::success;
+            fill = tint.withAlpha(0.2f);
+            text = tint;
+        }
+        r.fillRoundRect(chip, theme::radius::pill, fill);
+        r.drawText(*tag.layout, {chip.x + padX, chip.center().y - tag.layout->height * 0.5f}, text);
+        x = chip.right() + gap;
+    }
 }
 
 void PlayerScreen::loadLogo() {
@@ -723,6 +753,36 @@ void PlayerScreen::drawError(ui::Renderer& r) {
         r.drawText(*hint, {box.x + 18 + glyph + 8, box.center().y - hint->height * 0.5f}, theme::color::textPrimary);
         hits_.push_back({box, HitAction::ErrorBack});
     }
+}
+
+void PlayerScreen::refreshTags() {
+    std::vector<OsdTag> tags;
+    if (offline_) {
+        tags.push_back({.text = "Downloaded", .playMethod = true});
+    } else if (plan_) {
+        const char* method = plan_->method == jellyfin::PlayMethod::DirectPlay     ? "Direct Play"
+                             : plan_->method == jellyfin::PlayMethod::DirectStream ? "Direct Stream"
+                                                                                   : "Transcoding";
+        tags.push_back({.text = method, .playMethod = true, .transcoding = plan_->isTranscoding()});
+    }
+    if (mpv_ && fileLoaded_) {
+        auto add = [&tags](std::string text) {
+            if (!text.empty()) tags.push_back({.text = std::move(text)});
+        };
+        add(resolutionLabel(mpv_->getInt("width").value_or(0), mpv_->getInt("height").value_or(0)));
+        std::string pixelFormat = mpv_->getString("video-params/hw-pixelformat");
+        if (pixelFormat.empty()) pixelFormat = mpv_->getString("video-params/pixelformat");
+        add(videoCodecLabel(mpv_->getString("video-format"), pixelFormat));
+        add(audioCodecLabel(mpv_->getString("audio-codec-name"), mpv_->getInt("audio-params/channel-count").value_or(0)));
+    }
+    const bool same = std::equal(tags.begin(), tags.end(), osdTags_.begin(), osdTags_.end(),
+                                 [](const OsdTag& a, const OsdTag& b) {
+                                     return a.text == b.text && a.transcoding == b.transcoding && b.layout &&
+                                            b.layout->scale == gfx::text::displayScale();
+                                 });
+    if (same) return;
+    for (auto& t : tags) t.layout = gfx::text::layout(t.text, theme::type::caption);
+    osdTags_ = std::move(tags);
 }
 
 void PlayerScreen::refreshInfo() {

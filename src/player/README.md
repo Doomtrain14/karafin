@@ -72,7 +72,7 @@ example, choosing Japanese audio and English subtitles carries over to the follo
 | ↑ / ↓ | Show the OSD |
 | + | App quit confirmation (ui default) |
 | Touch | Tap toggles the OSD and activates the on-screen buttons (back, ±seek, play/pause, next, Audio & Subtitles, Options, Skip, up-next card). Tap or drag on the seek bar to scrub, with a preview |
-| Swipe vertically on the left / right | Adjust handheld screen brightness / playback volume, with a vertical level indicator on the same side. Gestures starting on buttons or the seek bar are excluded. Volume stays within 0-100%; brightness within 5-100% |
+| Swipe vertically on the left / right | Adjust handheld screen brightness / playback volume, with a vertical level indicator on the same side. Gestures starting on buttons or the seek bar are excluded. Volume ranges 0-200% (mpv `volume-max`; above 100% the audio is amplified, marked on the indicator); brightness 5-100% |
 
 Up-next uses a 10-second countdown, including at EOF for short episodes or late seeks. Automatic
 credits skipping also uses this card rather than bypassing the timer. Pausing, buffering,
@@ -88,6 +88,10 @@ the gesture. Open menus, hidden screens and focus loss cancel in-progress drags.
 
 The upper-left controls show the item's transparent Jellyfin Logo (or inherited series logo).
 While loading, if unavailable, or during offline playback, the normal text title remains.
+Below the title, tags show how the stream is played (Direct Play / Direct Stream / Transcoding /
+Downloaded) and what mpv is decoding: resolution, video codec with bit depth, and audio codec
+with channel layout (`media_tags.hpp`). They are re-read once a second while the OSD is visible,
+so audio track changes and transcode fallbacks show up.
 
 ## Files
 

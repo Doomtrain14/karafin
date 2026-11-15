@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstring>
 #include <mutex>
+#include <string>
 
 #include <GLES3/gl3.h>
 #include <mpv/render_gl.h>
@@ -13,6 +14,7 @@
 #include "core/log.hpp"
 #include "core/main_queue.hpp"
 #include "core/thread.hpp"
+#include "player/swipe.hpp"
 
 namespace karafin::player {
 
@@ -145,7 +147,7 @@ bool Mpv::init(const MpvOptions& o, std::string* error) {
     setOption("vo", "libmpv");
     setOption("ao", "hos");
     setOption("audio-channels", "auto-safe");
-    setOption("volume-max", "100");
+    setOption("volume-max", std::to_string(PlaybackSwipe::kMaxVolume));
 
     configureHwdec(mpv_, o.hwdec);
     setOption("vd-lavc-threads", "3");

@@ -298,6 +298,8 @@ void PlayerScreen::resetForNewItem() {
     adjustmentTimer_ = 0;
     backdrop_.reset();
     logo_.reset();
+    osdTags_.clear();
+    tagsTimer_ = 0;
     videoReveal_.set(0);
     subDelay_ = 0;
     recovering_ = reloading_ = false;
@@ -1446,6 +1448,16 @@ void PlayerScreen::update(float dt) {
             refreshInfo();
             infoTimer_ = 0.5;
         }
+    }
+    // Codec properties change on track switches and transcode fallbacks; poll only while visible.
+    if (osd_.value() > 0.004f) {
+        tagsTimer_ -= dt;
+        if (tagsTimer_ <= 0) {
+            refreshTags();
+            tagsTimer_ = 1.0;
+        }
+    } else {
+        tagsTimer_ = 0;
     }
     updatePlatformLocks();
 }

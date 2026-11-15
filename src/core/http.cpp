@@ -152,6 +152,7 @@ struct Client::Impl {
     std::mutex queueMutex;
     std::deque<std::unique_ptr<Transfer>> incoming;
     std::unordered_map<CURL*, std::unique_ptr<Transfer>> active;  // http thread only
+    std::deque<std::unique_ptr<Transfer>> deferred;               // background, waiting for a slot; http thread only
     std::atomic<size_t> activeCount{0};
     std::atomic<bool> resetRequested{false};
 
@@ -323,6 +324,35 @@ struct Client::Impl {
         main_thread::post([shared] { shared->cb(std::move(shared->resp)); });
     }
 
+    // http thread only.
+    void begin(std::unique_ptr<Transfer> t) {
+        t->easy = curl_easy_init();
+        if (!t->easy) {
+            t->resp.error = Error::Other;
+            t->resp.errorMessage = "curl_easy_init failed";
+            dispatch(std::move(t));
+            return;
+        }
+        configure(*t);
+        curl_multi_add_handle(multi, t->easy);
+        CURL* key = t->easy;
+        active.emplace(key, std::move(t));
+    }
+
+    // Starts deferred background transfers while fewer than kMaxBackground are running. Kept
+    // below CURLMOPT_MAX_HOST_CONNECTIONS so foreground requests to the same server never wait.
+    void admitBackground() {
+        static constexpr size_t kMaxBackground = 4;
+        size_t running = 0;
+        for (const auto& [easy, t] : active) running += t->req.background ? 1 : 0;
+        while (running < kMaxBackground && !deferred.empty()) {
+            auto t = std::move(deferred.front());
+            deferred.pop_front();
+            begin(std::move(t));
+            ++running;
+        }
+    }
+
     void loop() {
         while (running.load()) {
             if (resetRequested.exchange(false)) resetMulti();
@@ -332,18 +362,21 @@ struct Client::Impl {
                 batch.swap(incoming);
             }
             for (auto& t : batch) {
-                t->easy = curl_easy_init();
-                if (!t->easy) {
-                    t->resp.error = Error::Other;
-                    t->resp.errorMessage = "curl_easy_init failed";
-                    dispatch(std::move(t));
-                    continue;
-                }
-                configure(*t);
-                curl_multi_add_handle(multi, t->easy);
-                CURL* key = t->easy;
-                active.emplace(key, std::move(t));
+                if (t->req.background) deferred.push_back(std::move(t));
+                else begin(std::move(t));
             }
+
+            for (auto it = deferred.begin(); it != deferred.end();) {
+                if ((*it)->req.cancel.cancelled()) {
+                    (*it)->resp.error = Error::Cancelled;
+                    (*it)->resp.errorMessage = "cancelled";
+                    dispatch(std::move(*it));
+                    it = deferred.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+            admitBackground();
 
             for (auto it = active.begin(); it != active.end();) {
                 if (it->second->req.cancel.cancelled()) {
@@ -372,10 +405,14 @@ struct Client::Impl {
                 finalize(*t, rc);
                 dispatch(std::move(t));
             }
-            activeCount.store(active.size());
+            admitBackground();
+            activeCount.store(active.size() + deferred.size());
 
             curl_multi_poll(multi, nullptr, 0, active.empty() ? 1000 : 50, nullptr);
         }
+
+        for (auto& t : deferred) stopped.push_back(std::move(t));
+        deferred.clear();
 
         // Fail in-flight transfers as cancelled; stop() delivers them after join().
         for (auto& [easy, t] : active) {

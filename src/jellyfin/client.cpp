@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 
 #include "core/log.hpp"
 #include "core/main_queue.hpp"
@@ -218,6 +219,18 @@ void Client::applyAuth(const AuthResult& auth) {
 }
 
 void Client::noteReachable(bool reachable) {
+    const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch()).count();
+    if (reachable) {
+        failStreak_.store(0);
+        lastReachableMs_.store(now);
+    } else {
+        // One slow request (e.g. while downloads saturate the link) is not an outage: stay
+        // online until failures repeat or the server has been silent for a while.
+        const int streak = failStreak_.fetch_add(1) + 1;
+        const int64_t last = lastReachableMs_.load();
+        if (!offline_.load() && streak < kOfflineFailureStreak && last != 0 && now - last < kOfflineGraceMs) return;
+    }
     const bool wasOffline = offline_.exchange(!reachable);
     if (wasOffline == !reachable) return;
     log::info("jellyfin", "server {} is {}", baseUrl(), reachable ? "reachable again" : "unreachable");

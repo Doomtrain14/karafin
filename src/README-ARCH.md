@@ -70,7 +70,8 @@ includes only core).
    background 0x30). Horizon does not time-slice equal priorities, so never give a CPU-heavy
    thread the main thread's priority or core.
 3. **`http` thread** (curl multi): all async requests. Callbacks default to the main thread. Use
-   `CallbackThread::Http` only for tiny hand-offs (e.g. pushing bytes to a worker).
+   `CallbackThread::Http` only for tiny hand-offs (e.g. pushing bytes to a worker). Artwork is
+   sent with `Request::background`, which caps it at 4 transfers so API calls never queue behind it.
 4. **Dedicated `karafin::Thread`s** for long-running loops (download transfers via blocking
    `perform`, mpv's own threads).
 5. Cross-thread results go back with `main_thread::post`. Objects captured in posted lambdas must
