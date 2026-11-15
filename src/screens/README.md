@@ -28,24 +28,24 @@ first tab, on the first tab it opens the quit confirmation.
 
 | File | Contents |
 | --- | --- |
-| `splash_screen` | logo animation, session restore, applet-mode warning (`ui.applet_warning_hidden`), offline / error panel |
+| `splash_screen` | logo animation, session restore (asks for the profile code first when that profile has one; B goes to its sign-in page), applet-mode warning (`ui.applet_warning_hidden`), offline / error panel |
 | `server_screen` | saved servers (Y removes), LAN discovery (re-scans every 8 s), add by address (swkbd), offline downloads entry |
-| `login_screen` | remembered accounts (Y forgets), public users, other user, password via swkbd, Quick Connect |
+| `login_screen` | remembered accounts (Y forgets), public users, other user, password via swkbd, Quick Connect; profiles that ask for their lock code show a lock badge and ask before signing in (by any route) |
 | `main_screen` | header (wordmark, account chip), TabBar, lazily created `SectionView`s with fade/slide |
 | `home_section` | hero carousel + Continue Watching, Next Up, Recently Added per library, My Libraries; skeleton rows; quiet refresh on return; failed hero / Recently Added rows become inline errors with Try again |
-| `libraries_section` | library tiles + Favorites; X locks a library or opens its lock options (unlock, lock again, remove lock), Y scans it after a confirmation (administrators) |
-| `library_lock` | in-app lock for libraries with a 4 or 6 step D-pad code (`lock.code`, salted iterated SHA-256; `lock.libraries`): gates opening locked libraries, lists their titles so Home and Search can leave them out, per-library unlock until it is locked again, Lock now or restart |
-| `library_screen` | sparse-paged virtual grid over `/Items`, sort (X) / filter + genre (Y) / A-Z jump (−); failed pages retry with backoff (3 s doubling, max 30 s) while visible; settings `ui.library_sort`, `ui.library_desc`; administrators get a Scan library button; an unlocked locked library gets a Lock again button |
-| `detail_screen` | movie / episode page: badges, Resume + From start (or Play), audio, subtitle and version pickers, favorite, watched, download, episode / cast / similar rows |
-| `series_screen` | series page: next-up play, seasons TabBar (L/R) or picker, season actions, episode rows, series / season download |
-| `search_section` | swkbd search (A on the field, or Y), debounced grouped results, partial-failure warning row with Try again, recent searches (`ui.recent_searches`) |
-| `downloads_section` | storage bar, in-progress rows (pause / resume / retry / cancel, pause all, resume all), downloaded movies and shows, delete watched |
+| `libraries_section` | library tiles + Favorites; locked libraries show a lock (accent + "Locked" badge while locked, dimmed while unlocked); X locks a library or opens its lock options (unlock, lock again, remove lock), Y scans it after a confirmation (administrators) |
+| `library_lock` | per-profile lock with a 4 or 6 step D-pad code (`lock.profiles` keyed `<serverId>/<userId>`: code as salted iterated SHA-256, locked libraries, ask-on-open, wrong-code count and lockout end; 1.0.4's global `lock.code` / `lock.libraries` move into the first profile signed in): gates opening locked libraries and, optionally, the profile itself; lists locked titles (cached until locks or the profile change) so Home, Search and library grids leave them out; per-library unlock until it is locked again, Lock now, a profile switch or restart; 5 wrong codes pause entry for 30 s, doubling per further 5 up to 5 min, kept across restarts |
+| `library_screen` | sparse-paged virtual grid over `/Items`, sort (X) / filter + genre (Y, active ones shown as a chip by the count) / A-Z jump (−, keeps the filters); failed pages retry with backoff (3 s doubling, max 30 s) while visible; settings `ui.library_sort`, `ui.library_desc`; administrators get a Scan library button; an unlocked locked library gets a Lock again button; while titles are locked, grids that can mix libraries (people, favorites, collections, folders) list matching ids first, drop locked ones and page by id |
+| `detail_screen` | movie / episode page: badges, Resume + From start (or Play), audio, subtitle and version pickers, favorite, watched, download, episode / cast / similar rows; a cut-off overview is focusable (A or tap opens the full text) |
+| `series_screen` | series page: next-up play, seasons TabBar (L/R) or picker, season actions, episode rows, series / season download; a cut-off overview opens the full text with A or a tap |
+| `search_section` | swkbd search (A on the field or Y, both labelled Search), debounced grouped results, partial-failure warning row with Try again, recent searches (`ui.recent_searches`) |
+| `downloads_section` | storage bar, overall speed and time left while downloading, in-progress rows (pause / resume / retry / cancel, pause all, resume all), downloaded movies and shows, delete watched |
 | `offline_series_screen` | downloaded episodes of one show by season |
 | `settings_section` | Account, Playback, Subtitles, Downloads, Interface, About (keys owned by jellyfin / player / downloads / ui) |
 | `common` | formatting, image requests, `bindCard`, `openItem`, `playItem` / `playAt` / `playSeries` / `playOffline` |
 | `item_meta` | metadata and media chips (4K, HDR10, DV, codecs, audio, CC), track titles |
 | `keyboard` | `showKeyboard` / `requestText` wrapper around libnx swkbd (text, URL, password) |
-| `widgets/` | `ItemCard`, `HeroCarousel`, `RowStack`, `StatusView`, `ErrorRow`, `Skeleton(Row)`, `ActionButton`, `ActionRow`, `ChipRow`, `AvatarTile`, `BusyModal`, `QuickConnectModal`, `DownloadButton`, `EpisodeRow`, `PendingDownloadRow`, `OfflineItemRow`, `StorageBar`, `PinPad` (D-pad code entry) |
+| `widgets/` | `ItemCard`, `HeroCarousel`, `RowStack`, `StatusView`, `ErrorRow`, `Skeleton(Row)`, `ActionButton`, `ActionRow`, `ChipRow`, `AvatarTile`, `BusyModal`, `QuickConnectModal`, `DownloadButton`, `EpisodeRow`, `PendingDownloadRow`, `OfflineItemRow`, `StorageBar`, `PinPad` (D-pad / touch-arrow code entry with lockout countdown), `OverviewText` (overview that opens the full text when cut off) |
 
 ## Conventions
 

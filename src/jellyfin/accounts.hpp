@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -49,12 +50,14 @@ public:
         StoredServer server;
         StoredUser user;
     };
-    // Most recently used server + user that still has a token (auto sign-in on startup).
-    std::optional<SessionRef> lastSession();
+    // The last server + user used by this Switch profile, or the legacy most-recent session
+    // when the profile has not signed in before.
+    std::optional<SessionRef> lastSession(const std::string& switchProfileId = {});
 
     void saveServer(const ServerInfo& info, const std::string& baseUrl);
     void saveUser(const std::string& serverId, const UserDto& user, const std::string& token);
-    void markUsed(const std::string& serverId, const std::string& userId);
+    void markUsed(const std::string& serverId, const std::string& userId,
+                  const std::string& switchProfileId = {});
     void clearToken(const std::string& serverId, const std::string& userId);
     void removeUser(const std::string& serverId, const std::string& userId);
     void removeServer(const std::string& serverId);
@@ -71,6 +74,7 @@ private:
     bool loaded_ = false;
     std::string deviceId_;
     std::vector<StoredServer> servers_;
+    std::map<std::string, std::pair<std::string, std::string>> switchSessions_;
 };
 
 }  // namespace karafin::jellyfin

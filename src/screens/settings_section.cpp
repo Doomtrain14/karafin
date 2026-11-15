@@ -221,11 +221,19 @@ std::vector<ListItem> SettingsSection::buildItems(Category c) {
                                    gfx::Icon::Refresh, false, true, [] { scanLibrary({}, {}); }});
                 LibraryLock& lock = LibraryLock::instance();
                 const bool hasLock = lock.hasCode();
-                out.push_back({hasLock ? "Change lock code" : "Library lock",
-                               hasLock ? "Lock, unlock or lock again with X on a library in the Libraries tab"
-                                       : "Set a 4 or 6 step D-pad code to lock libraries (X in the Libraries tab)",
+                out.push_back({hasLock ? "Change lock code" : "Lock code",
+                               hasLock ? "For " + user.name + " only. Lock libraries with X in the Libraries tab"
+                                       : "Set a 4 or 6 step D-pad code for " + user.name +
+                                             " to lock libraries or this profile",
                                hasLock ? "On" : "Off", gfx::Icon::Lock, hasLock, true,
                                [this] { LibraryLock::instance().changeCode(guard([this] { refresh(); })); }});
+                const bool asks = lock.asksOnOpen();
+                out.push_back({"Ask for code to open this profile",
+                               hasLock ? "Needed to sign in as " + user.name + " on this console"
+                                       : "Set a lock code first",
+                               asks ? "On" : "Off", gfx::Icon::User, asks, hasLock, [this, asks] {
+                                   LibraryLock::instance().setAsksOnOpen(!asks, guard([this] { refresh(); }));
+                               }});
                 if (hasLock) {
                     const bool open = lock.anyUnlocked();
                     out.push_back({"Lock now", open ? "Lock every unlocked library again" : "Locked libraries are hidden", "",
@@ -233,8 +241,8 @@ std::vector<ListItem> SettingsSection::buildItems(Category c) {
                                        LibraryLock::instance().lockNow();
                                        refresh();
                                    }});
-                    out.push_back({"Turn off library lock", "Removes the code and every lock", "", gfx::Icon::Close,
-                                   false, true,
+                    out.push_back({"Turn off lock code", "Removes the code, every library lock and the profile code", "",
+                                   gfx::Icon::Close, false, true,
                                    [this] { LibraryLock::instance().removeCode(guard([this] { refresh(); })); }});
                 }
             }

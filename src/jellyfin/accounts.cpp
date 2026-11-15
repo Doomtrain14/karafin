@@ -46,10 +46,18 @@ void AccountStore::ensureLoaded() {
     if (loaded_) return;
     loaded_ = true;
     servers_.clear();
+    switchSessions_.clear();
     if (auto data = fs::readFileAtomic(filePath())) {
         const Json doc = Json::parse(*data, nullptr, false);
         if (doc.is_object()) {
             deviceId_ = getStr(doc, "deviceId");
+            const Json sessions = doc.value("switchSessions", Json::object());
+            if (sessions.is_object()) {
+                for (auto it = sessions.begin(); it != sessions.end(); ++it) {
+                    if (!it.value().is_object()) continue;
+                    switchSessions_[it.key()] = {getStr(it.value(), "serverId"), getStr(it.value(), "userId")};
+                }
+            }
             for (const auto& js : getArr(doc, "servers")) {
                 StoredServer s;
                 s.id = getStr(js, "id");
@@ -82,7 +90,12 @@ void AccountStore::ensureLoaded() {
 }
 
 void AccountStore::persist() {
-    Json doc = {{"version", kFormatVersion}, {"deviceId", deviceId_}, {"servers", Json::array()}};
+    Json doc = {{"version", kFormatVersion},
+                {"deviceId", deviceId_},
+                {"servers", Json::array()},
+                {"switchSessions", Json::object()}};
+    for (const auto& [profile, session] : switchSessions_)
+        doc["switchSessions"][profile] = {{"serverId", session.first}, {"userId", session.second}};
     for (const auto& s : servers_) {
         Json js = {{"id", s.id},           {"name", s.name},         {"url", s.url},
                    {"version", s.version}, {"lastUsed", s.lastUsed}, {"lastUserId", s.lastUserId},
@@ -123,9 +136,20 @@ std::optional<StoredServer> AccountStore::server(const std::string& serverId) {
     return std::nullopt;
 }
 
-std::optional<AccountStore::SessionRef> AccountStore::lastSession() {
+std::optional<AccountStore::SessionRef> AccountStore::lastSession(const std::string& switchProfileId) {
     std::lock_guard lock(mutex_);
     ensureLoaded();
+    if (!switchProfileId.empty()) {
+        const auto session = switchSessions_.find(switchProfileId);
+        if (session != switchSessions_.end()) {
+            for (const auto& server : servers_) {
+                if (server.id != session->second.first) continue;
+                if (const StoredUser* user = server.user(session->second.second)) return SessionRef{server, *user};
+                break;
+            }
+            return std::nullopt;
+        }
+    }
     for (const auto& s : servers_) {
         if (const StoredUser* u = s.user(s.lastUserId); u && u->hasToken()) return SessionRef{s, *u};
         for (const auto& u : s.users)
@@ -176,7 +200,8 @@ void AccountStore::saveUser(const std::string& serverId, const UserDto& user, co
     persist();
 }
 
-void AccountStore::markUsed(const std::string& serverId, const std::string& userId) {
+void AccountStore::markUsed(const std::string& serverId, const std::string& userId,
+                            const std::string& switchProfileId) {
     std::lock_guard lock(mutex_);
     ensureLoaded();
     StoredServer* s = findServer(serverId);
@@ -186,6 +211,7 @@ void AccountStore::markUsed(const std::string& serverId, const std::string& user
         s->lastUserId = userId;
         for (auto& u : s->users)
             if (u.id == userId) u.lastUsed = s->lastUsed;
+        if (!switchProfileId.empty()) switchSessions_[switchProfileId] = {serverId, userId};
     }
     sortByRecent(servers_);
     persist();
@@ -213,6 +239,8 @@ void AccountStore::removeUser(const std::string& serverId, const std::string& us
     if (!s) return;
     std::erase_if(s->users, [&](const StoredUser& u) { return u.id == userId; });
     if (s->lastUserId == userId) s->lastUserId.clear();
+    for (auto& [profile, session] : switchSessions_)
+        if (session.first == serverId && session.second == userId) session = {};
     persist();
 }
 
@@ -220,6 +248,8 @@ void AccountStore::removeServer(const std::string& serverId) {
     std::lock_guard lock(mutex_);
     ensureLoaded();
     std::erase_if(servers_, [&](const StoredServer& s) { return s.id == serverId; });
+    for (auto& [profile, session] : switchSessions_)
+        if (session.first == serverId) session = {};
     persist();
 }
 

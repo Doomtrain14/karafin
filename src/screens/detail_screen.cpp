@@ -52,8 +52,7 @@ DetailScreen::DetailScreen(std::string itemId) : itemId_(std::move(itemId)) {
     media_ = header_->add<ChipRow>();
     genres_ = header_->add<Label>("", theme::type::callout, theme::color::textSecondary);
     genres_->setPreferredSize(kTextWidth, -1);
-    overview_ = header_->add<Label>("", theme::type::body, theme::color::textSecondary);
-    overview_->setMaxLines(4);
+    overview_ = header_->add<OverviewText>(4);
     overview_->setPreferredSize(kTextWidth - 40, -1);
     credits_ = header_->add<Label>("", theme::type::caption, theme::color::textTertiary);
     credits_->setPreferredSize(kTextWidth, -1);
@@ -191,6 +190,7 @@ void DetailScreen::populate(const jf::BaseItem& item, bool refresh) {
         genres_->setText(genresText(item_, 4));
         genres_->setVisible(!genres_->text().empty());
         overview_->setText(item_.overview.empty() && !item_.taglines.empty() ? item_.taglines.front() : item_.overview);
+    overview_->setSheetTitle(item_.name);
         overview_->setVisible(!overview_->text().empty());
 
         std::string directors, writers;
@@ -419,10 +419,12 @@ void DetailScreen::openVersions() {
 
 void DetailScreen::toggleFavorite() {
     auto client = jf::currentClient();
-    if (!client || !loaded_) return;
+    if (!client || !loaded_ || favPending_) return;
     const bool fav = !item_.userData.isFavorite;
+    favPending_ = true;
     client->setFavorite(item_.id, fav).then(
         [this, fav](jf::Result<jf::UserData> r) {
+            favPending_ = false;
             if (!r) {
                 toast(errorMessage(r.error), ToastKind::Error, gfx::Icon::Warning);
                 return;
@@ -436,10 +438,12 @@ void DetailScreen::toggleFavorite() {
 
 void DetailScreen::toggleWatched() {
     auto client = jf::currentClient();
-    if (!client || !loaded_) return;
+    if (!client || !loaded_ || watchedPending_) return;
     const bool played = !item_.userData.played;
+    watchedPending_ = true;
     client->setPlayed(item_.id, played).then(
         [this, played](jf::Result<jf::UserData> r) {
+            watchedPending_ = false;
             if (!r) {
                 toast(errorMessage(r.error), ToastKind::Error, gfx::Icon::Warning);
                 return;

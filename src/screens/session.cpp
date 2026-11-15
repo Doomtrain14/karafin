@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "core/log.hpp"
+#include "core/platform.hpp"
 #include "screens/login_screen.hpp"
 #include "screens/main_screen.hpp"
 #include "screens/server_screen.hpp"
@@ -56,7 +57,7 @@ void enterApp(jf::ClientPtr client) {
     g_expiredShown = false;
     jf::setCurrentClient(client);
     installHandlers(client);
-    jf::AccountStore::instance().markUsed(client->serverId(), client->userId());
+    jf::AccountStore::instance().markUsed(client->serverId(), client->userId(), platform::switchProfileId());
     resetStack(std::make_unique<MainScreen>(MainMode::Online));
 }
 

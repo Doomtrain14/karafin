@@ -60,6 +60,11 @@ Result<BaseItem> r = client->item(id).wait(cancelToken);
 | Pending offline playback reports | `sdmc:/switch/karafin/jellyfin_pending_reports.json` (`ReportQueue`) |
 | Playback tuning | `settings.json` keys `jellyfin.max_streaming_bitrate` (bits/s, default 120000000), `jellyfin.max_audio_channels` (default 8), `jellyfin.enable_av1` (default true) |
 
+The account store also maps each Switch profile to its last Jellyfin server and user. Karafin uses
+the profile selected for title override when available, falling back to the last-opened Switch
+profile. The profile identifier is stored as a SHA-256 digest; existing installations keep their
+current startup account until each Switch profile signs in once.
+
 The DeviceId is `karafin-<32 hex>`. It is generated once with the kernel CSPRNG and then reused.
 Every request sends:
 `Authorization: MediaBrowser Client="Karafin", Device="Nintendo Switch", DeviceId="...", Version="1.0.0", Token="..."`.
@@ -67,7 +72,7 @@ Every request sends:
 ### Startup / login flow (screens)
 
 ```cpp
-if (auto last = AccountStore::instance().lastSession()) {
+if (auto last = AccountStore::instance().lastSession(platform::switchProfileId())) {
     auto client = Client::fromStored(last->server, &last->user);   // no network yet
     client->validateSession().then([client](Result<UserDto> r) {
         if (r) { setCurrentClient(client); goHome(); }
@@ -249,7 +254,7 @@ in Debug builds.
 ## Limitations
 
 * Targets the Jellyfin 10.8-10.11 API.
-* Discovery uses the IPv4 broadcast 255.255.255.255 only, and needs `platform::networkConnected()`.
+* Discovery uses the IPv4 broadcast 255.255.255.255 only, and needs `platform::networkConnected()` (nifm reports internet, or the console has a local IP).
 * Queued offline Stopped reports overwrite the server's resume position even if the item was
   watched elsewhere after the offline session.
 * Remote subtitle download depends on a server-side provider plugin. A subtitle that the server

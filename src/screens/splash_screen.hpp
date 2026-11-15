@@ -16,7 +16,8 @@ namespace karafin::screens {
 
 // Animated logo while the last session is restored (fromStored + validateSession):
 // success -> Home, 401 -> sign-in, unreachable -> offer offline downloads / retry / change
-// server, nothing saved -> server selection. Shows the applet-mode memory warning once.
+// server, nothing saved -> server selection. Shows the applet-mode memory warning once. A profile that
+// asks for its lock code asks before Home; backing out goes to that server's sign-in page.
 class SplashScreen : public ui::Screen {
 public:
     explicit SplashScreen(bool coldStart = true);
@@ -39,6 +40,8 @@ private:
     Outcome outcome_ = Outcome::Pending;
     jellyfin::ClientPtr client_;
     std::string serverId_;
+    std::string userId_;
+    std::string userName_;
     std::string serverName_;
     bool dialogOpen_ = false;
     bool warningChecked_ = false;

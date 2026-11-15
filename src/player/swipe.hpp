@@ -9,7 +9,8 @@ class PlaybackSwipe {
 public:
     enum class Control { None, Brightness, Volume };
 
-    bool begin(float x, float y, float width, float height, bool blocked) {
+    // Without `brightness` (docked: a TV's backlight can't be changed) both sides control volume.
+    bool begin(float x, float y, float width, float height, bool blocked, bool brightness = true) {
         cancel();
         if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(width) || !std::isfinite(height) ||
             width <= 0 || height <= 0)
@@ -17,7 +18,8 @@ public:
         startX_ = x;
         startY_ = y;
         height_ = height;
-        candidate_ = blocked ? Control::None : x < width * 0.5f ? Control::Brightness : Control::Volume;
+        left_ = x < width * 0.5f;
+        candidate_ = blocked ? Control::None : left_ && brightness ? Control::Brightness : Control::Volume;
         control_ = Control::None;
         return true;
     }
@@ -51,10 +53,12 @@ public:
 
     void cancel() { candidate_ = control_ = Control::None; }
     Control control() const { return control_; }
+    bool left() const { return left_; }
 
 private:
     float startX_ = 0, startY_ = 0, height_ = 720;
     Control candidate_ = Control::None, control_ = Control::None;
+    bool left_ = false;
 };
 
 }  // namespace karafin::player

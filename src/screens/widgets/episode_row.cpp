@@ -98,10 +98,12 @@ bool EpisodeRow::onInput(const InputEvent& e) {
 
 void EpisodeRow::toggleWatched() {
     auto client = jf::currentClient();
-    if (!client) return;
+    if (!client || watchedPending_) return;
     const bool played = !item_.userData.played;
+    watchedPending_ = true;
     client->setPlayed(item_.id, played).then(
         [this, played](jf::Result<jf::UserData> r) {
+            watchedPending_ = false;
             if (!r) {
                 toast(errorMessage(r.error), ToastKind::Error, gfx::Icon::Warning);
                 return;

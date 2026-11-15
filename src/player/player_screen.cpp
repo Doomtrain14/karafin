@@ -977,7 +977,10 @@ void PlayerScreen::onReachedEnd() {
     phase_ = Phase::Ended;
     cancelScrub();
     if (next_ && !upNextDismissed_) {
-        if (!upNextVisible_) upNextTimer_.start(autoplayNext_);
+        if (!upNextVisible_) {
+            upNextTimer_.start(autoplayNext_);
+            upNextFocus_ = 0;
+        }
         upNextVisible_ = true;
         showOsd(1.0);
         return;
@@ -1183,9 +1186,20 @@ void PlayerScreen::addExternalSubtitle(const Track& track, bool select) {
                  });
 }
 
+void PlayerScreen::confirmStreamRestart(bool audio, std::function<void()> restart) {
+    ui::present(ui::Dialog::confirm(
+        "Restart the stream?",
+        std::format("Changing the {} track restarts the transcoded stream from the current position. This takes a "
+                    "few seconds.",
+                    audio ? "audio" : "subtitle"),
+        "Switch", "Cancel", guard([this, restart = std::move(restart)](bool ok) {
+            if (ok && mpv_ && fileLoaded_ && !exiting_) restart();
+        })));
+}
+
 void PlayerScreen::selectSubtitle(Track* track) {
     if (!mpv_ || !fileLoaded_) return;
-    sessionSubLang_ = track ? track->language : std::string();
+    const std::string language = track ? track->language : std::string();
     const int target = track ? track->jellyfinIndex : -1;
     bool burnedIn = false;
     if (plan_ && plan_->isTranscoding() && plan_->subtitleStreamIndex >= 0)
@@ -1193,9 +1207,13 @@ void PlayerScreen::selectSubtitle(Track* track) {
             if (t.jellyfinIndex == plan_->subtitleStreamIndex && t.needsRestart) burnedIn = true;
 
     if ((track && track->needsRestart) || (burnedIn && target != plan_->subtitleStreamIndex)) {
-        restartStream(currentAudioIndex(), target);
+        confirmStreamRestart(false, [this, language, target] {
+            sessionSubLang_ = language;
+            restartStream(currentAudioIndex(), target);
+        });
         return;
     }
+    sessionSubLang_ = language;
     if (!track) {
         mpv_->setString("sid", "no");
         refreshTrackList();
@@ -1214,11 +1232,14 @@ void PlayerScreen::selectSubtitle(Track* track) {
 
 void PlayerScreen::selectAudio(Track* track) {
     if (!track || !mpv_ || !fileLoaded_) return;
-    sessionAudioLang_ = track->language;
     if (track->needsRestart) {
-        restartStream(track->jellyfinIndex, currentSubtitleIndex());
+        confirmStreamRestart(true, [this, language = track->language, index = track->jellyfinIndex] {
+            sessionAudioLang_ = language;
+            restartStream(index, currentSubtitleIndex());
+        });
         return;
     }
+    sessionAudioLang_ = track->language;
     if (track->mpvId > 0) {
         mpv_->setInt("aid", track->mpvId);
         refreshTrackList();
@@ -1343,6 +1364,7 @@ void PlayerScreen::updateUpNext(float dt) {
         const bool inZone = duration_ > 0 && displayPosition() >= trigger && !scrubbing_;
         if (inZone && !upNextVisible_ && !upNextDismissed_) {
             upNextVisible_ = true;
+            upNextFocus_ = 0;
             upNextTimer_.start(autoplayNext_);
         } else if (!inZone && !scrubbing_) {
             upNextVisible_ = false;
@@ -1555,7 +1577,8 @@ bool PlayerScreen::onInput(const ui::InputEvent& e) {
             if (!e.pressed()) return true;
             if (scrubbing_) commitScrub();
             else if (activeSegment_ && skipAppear_.target() > 0.5f) skipActiveSegment();
-            else if (upNextVisible_) playNext(true);
+            else if (upNextVisible_ && upNextFocus_ == 0) playNext(true);
+            else if (upNextVisible_ && upNextFocus_ == 1) dismissUpNext();
             else if (phase_ == Phase::Ended) seekAbsolute(0);
             else togglePause();
             return true;
@@ -1568,6 +1591,10 @@ bool PlayerScreen::onInput(const ui::InputEvent& e) {
             return true;
         case Key::Left:
         case Key::Right: {
+            if (upNextVisible_ && upNextFocus_ >= 0 && !scrubbing_) {
+                if (e.pressedOrRepeat()) upNextFocus_ = e.button == Key::Left ? 0 : 1;
+                return true;
+            }
             if (!fileLoaded_) return true;
             scrubKeyHeld_ = true;
             // Accelerates while held: 1x, 3x, 6x, 12x the seek step.
@@ -1578,7 +1605,10 @@ bool PlayerScreen::onInput(const ui::InputEvent& e) {
         }
         case Key::Up:
         case Key::Down:
-            if (e.pressed()) showOsd(4.0);
+            if (!e.pressed()) return true;
+            // Up leaves the up-next buttons so Left / Right seek again; Down returns to them.
+            if (upNextVisible_) upNextFocus_ = e.button == Key::Up ? -1 : std::max(upNextFocus_, 0);
+            showOsd(4.0);
             return true;
         case Key::ZL:
         case Key::ZR:

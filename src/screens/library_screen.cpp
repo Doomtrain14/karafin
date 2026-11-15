@@ -4,6 +4,8 @@
 #include <format>
 
 #include "core/settings.hpp"
+#include "gfx/icons.hpp"
+#include "gfx/text.hpp"
 #include "jellyfin/client.hpp"
 #include "screens/common.hpp"
 #include "screens/library_lock.hpp"
@@ -31,6 +33,31 @@ const char* filterName(int f) {
 }
 }  // namespace
 
+// Rounded "Filter: Unwatched · Action" label next to the item count.
+class LibraryFilterChip : public View {
+public:
+    static constexpr float kHeight = 26;
+
+    void setText(std::string text) {
+        text_ = std::move(text);
+        setVisible(!text_.empty());
+        layout_ = text_.empty() ? nullptr : gfx::text::layout(text_, theme::type::caption, {.maxWidth = 360});
+        setSize(layout_ ? 10 + 14 + 6 + layout_->width + 12 : 0, kHeight);
+    }
+
+    void draw(Renderer& r) override {
+        if (!layout_) return;
+        r.fillRoundRect(bounds(), kHeight * 0.5f, theme::color::accent.withAlpha(0.22f));
+        r.strokeRoundRect(bounds(), kHeight * 0.5f, 1, theme::color::accent.withAlpha(0.55f));
+        gfx::drawIcon(r, gfx::Icon::Filter, {10, (kHeight - 14) * 0.5f, 14, 14}, theme::color::accentBright, 1.2f);
+        r.drawText(*layout_, {30, (kHeight - layout_->height) * 0.5f}, theme::color::textPrimary);
+    }
+
+private:
+    std::string text_;
+    gfx::TextLayoutPtr layout_;
+};
+
 LibraryScreen::LibraryScreen(LibrarySpec spec) : spec_(std::move(spec)) {
     genre_ = spec_.genre;
     sort_ = static_cast<Sort>(std::clamp(Settings::instance().get<int>("ui.library_sort", 0), 0, 5));
@@ -44,6 +71,9 @@ LibraryScreen::LibraryScreen(LibrarySpec spec) : spec_(std::move(spec)) {
     title_->setFrame({theme::layout::marginX, 34, 700, 44});
     subtitle_ = add<Label>("", theme::type::callout, theme::color::textSecondary);
     subtitle_->setFrame({theme::layout::marginX, 82, 760, 22});
+    chip_ = add<LibraryFilterChip>();
+    chip_->setFrame({theme::layout::marginX, 80, 0, LibraryFilterChip::kHeight});
+    chip_->setVisible(false);
 
     const bool canScan = !spec_.parentId.empty() && isAdmin();
     const bool canRelock = !spec_.parentId.empty() && LibraryLock::instance().hasCode() &&
@@ -180,9 +210,20 @@ void LibraryScreen::reload() {
     skeleton_->setVisible(true);
     skeleton_->alpha.set(0.0f);
     skeleton_->alpha.tweenTo(1.0f, theme::motion::normal, ease::outCubic);
+    index_.clear();
+    indexNames_.clear();
     updateHeader();
     auto client = jf::currentClient();
     if (!client) return;
+    lockRevision_ = LibraryLock::instance().revision();
+    lockFiltered_ = needsLockFilter();
+    if (lockFiltered_) {
+        LibraryLock::instance().prepare(guard([this, tok = token_] {
+            if (!tok.cancelled()) loadIndex();
+        }));
+        return;
+    }
+    pendingJump_.clear();
     jf::ItemsQuery q = baseQuery();
     const bool random = sort_ == Sort::Random;
     q.startIndex(0).limit(random ? kRandomLimit : static_cast<int>(kPageSize)).enableTotalRecordCount(true);
@@ -200,38 +241,96 @@ void LibraryScreen::reload() {
             items_.resize(static_cast<size_t>(total_));
             for (size_t i = 0; i < r->items.size() && i < items_.size(); ++i)
                 items_[i] = std::make_unique<jf::BaseItem>(std::move(r->items[i]));
-            updateHeader();
-            if (total_ == 0) {
-                const bool filtered = filter_ != Filter::All || genre_ != spec_.genre;
-                std::vector<StatusAction> actions;
-                if (filtered)
-                    actions.push_back({"Clear filters", gfx::Icon::Close, [this] {
-                                           filter_ = Filter::All;
-                                           genre_ = spec_.genre;
-                                           reload();
-                                       }, true});
-                status_->showEmpty(gfx::Icon::Library, filtered ? "No matches" : "Nothing here yet",
-                                   filtered ? "No items match the current filters." : "This library is empty.",
-                                   std::move(actions));
-                if (filtered) status_->focusAction();
-                else focus().setFocus(sortBtn_);
-                return;
-            }
-            status_->hide();
-            grid_->setVisible(true);
-            grid_->alpha.set(0.0f);
-            grid_->alpha.tweenTo(1.0f, theme::motion::slow, ease::outCubic);
-            grid_->reload();
-            grid_->scrollTo(0, false);
-            const size_t target = pendingFocus_ != SIZE_MAX ? std::min(pendingFocus_, items_.size() - 1) : 0;
-            pendingFocus_ = SIZE_MAX;
-            grid_->focusIndex(target);
+            showResults();
         },
         token_);
 }
 
+bool LibraryScreen::needsLockFilter() const {
+    const LibraryLock& lock = LibraryLock::instance();
+    if (!lock.active()) return false;
+    // A library's own grid only holds that library's titles: an unlocked locked library, or one
+    // that isn't locked. Everything else (people, favorites, collections, folders) can mix them.
+    if (spec_.parentId.empty()) return true;
+    if (lock.isLocked(spec_.parentId)) return false;
+    return spec_.collectionType.empty() || spec_.collectionType == "boxsets";
+}
+
+void LibraryScreen::loadIndex() {
+    auto client = jf::currentClient();
+    if (!client) return;
+    jf::ItemsQuery q = baseQuery();
+    q.fields("ParentId,SortName").enableUserData(false).enableImageTypes("").param("EnableImages", "false");
+    client->items(q).then(
+        [this](jf::Result<jf::QueryResult<jf::BaseItem>> r) {
+            if (!r) {
+                skeleton_->setVisible(false);
+                status_->showError(errorMessage(r.error), [this] { reload(); });
+                status_->focusAction();
+                return;
+            }
+            index_.clear();
+            indexNames_.clear();
+            for (const auto& it : LibraryLock::instance().filter(r->items)) {
+                index_.push_back(it.id);
+                indexNames_.push_back(lowerAscii(it.sortName.empty() ? it.name : it.sortName));
+            }
+            if (sort_ == Sort::Random && index_.size() > static_cast<size_t>(kRandomLimit)) {
+                index_.resize(kRandomLimit);
+                indexNames_.resize(kRandomLimit);
+            }
+            total_ = static_cast<int>(index_.size());
+            items_.clear();
+            items_.resize(index_.size());
+            if (!pendingJump_.empty()) {
+                pendingFocus_ = indexForLetter(pendingJump_);
+                pendingJump_.clear();
+            }
+            skeleton_->setVisible(false);
+            showResults();
+        },
+        token_);
+}
+
+void LibraryScreen::showResults() {
+    updateHeader();
+    if (total_ == 0) {
+        const bool filtered = filter_ != Filter::All || genre_ != spec_.genre;
+        std::vector<StatusAction> actions;
+        if (filtered)
+            actions.push_back({"Clear filters", gfx::Icon::Close, [this] {
+                                   filter_ = Filter::All;
+                                   genre_ = spec_.genre;
+                                   reload();
+                               }, true});
+        status_->showEmpty(gfx::Icon::Library, filtered ? "No matches" : "Nothing here yet",
+                           filtered ? "No items match the current filters." : "This library is empty.",
+                           std::move(actions));
+        if (filtered) status_->focusAction();
+        else focus().setFocus(sortBtn_);
+        return;
+    }
+    status_->hide();
+    grid_->setVisible(true);
+    grid_->alpha.set(0.0f);
+    grid_->alpha.tweenTo(1.0f, theme::motion::slow, ease::outCubic);
+    grid_->reload();
+    grid_->scrollTo(0, false);
+    const size_t target = pendingFocus_ != SIZE_MAX ? std::min(pendingFocus_, items_.size() - 1) : 0;
+    pendingFocus_ = SIZE_MAX;
+    grid_->focusIndex(target);
+}
+
+size_t LibraryScreen::indexForLetter(const std::string& letter) const {
+    if (letter == "#" || indexNames_.empty()) return 0;
+    // Same rule as the server's NameLessThan: the number of sort names before the letter.
+    const std::string key = lowerAscii(letter);
+    const auto before = std::count_if(indexNames_.begin(), indexNames_.end(), [&](const std::string& n) { return n < key; });
+    return std::min(static_cast<size_t>(before), indexNames_.size() - 1);
+}
+
 void LibraryScreen::ensurePage(size_t page, bool force) {
-    if (sort_ == Sort::Random || loadingPages_.count(page) || backoffPages_.count(page)) return;
+    if ((sort_ == Sort::Random && !lockFiltered_) || loadingPages_.count(page) || backoffPages_.count(page)) return;
     const size_t start = page * kPageSize;
     if (start >= items_.size()) return;
     bool missing = force;
@@ -241,10 +340,21 @@ void LibraryScreen::ensurePage(size_t page, bool force) {
     auto client = jf::currentClient();
     if (!client) return;
     loadingPages_.insert(page);
-    jf::ItemsQuery q = baseQuery();
-    q.startIndex(static_cast<int>(start)).limit(static_cast<int>(kPageSize)).enableTotalRecordCount(false);
+    const size_t end = std::min(items_.size(), start + kPageSize);
+    jf::ItemsQuery q;
+    if (lockFiltered_) {
+        std::string ids;
+        for (size_t i = start; i < end; ++i) {
+            if (!ids.empty()) ids += ",";
+            ids += index_[i];
+        }
+        q.ids(std::move(ids));
+    } else {
+        q = baseQuery();
+        q.startIndex(static_cast<int>(start)).limit(static_cast<int>(kPageSize)).enableTotalRecordCount(false);
+    }
     client->items(q).then(
-        [this, page, start](jf::Result<jf::QueryResult<jf::BaseItem>> r) {
+        [this, page, start, end](jf::Result<jf::QueryResult<jf::BaseItem>> r) {
             loadingPages_.erase(page);
             if (!r) {
                 pageFailed(page, r.error);
@@ -252,6 +362,18 @@ void LibraryScreen::ensurePage(size_t page, bool force) {
             }
             pageFailures_.erase(page);
             if (pageFailures_.empty()) pageErrorShown_ = false;
+            if (lockFiltered_) {
+                // Fetched by id: place each item at its slot in the index.
+                for (auto& it : r->items) {
+                    for (size_t i = start; i < end && i < index_.size(); ++i) {
+                        if (index_[i] != it.id) continue;
+                        items_[i] = std::make_unique<jf::BaseItem>(std::move(it));
+                        if (View* cell = grid_->cellAt(i)) bindCell(*cell, i);
+                        break;
+                    }
+                }
+                return;
+            }
             for (size_t k = 0; k < r->items.size() && start + k < items_.size(); ++k) {
                 items_[start + k] = std::make_unique<jf::BaseItem>(std::move(r->items[k]));
                 if (View* cell = grid_->cellAt(start + k)) bindCell(*cell, start + k);
@@ -302,11 +424,15 @@ void LibraryScreen::updateHeader() {
     std::string count = total_ > 0 ? std::format("{} {}", formatCount(total_), typeNoun(total_)) : std::string();
     std::string filter;
     if (filter_ != Filter::All) filter = filterName(static_cast<int>(filter_));
-    if (!genre_.empty()) filter = filter.empty() ? genre_ : filter + ", " + genre_;
+    if (!genre_.empty()) filter = filter.empty() ? genre_ : filter + " \xC2\xB7 " + genre_;
     std::string sort = sort_ == Sort::Random ? std::string("Shuffled")
                                              : std::format("Sorted by {} {}", sortName(static_cast<int>(sort_)),
                                                            descending_ ? "\xE2\x86\x93" : "\xE2\x86\x91");
-    subtitle_->setText(joinDots({count, filter, sort}));
+    chip_->setText(filter);
+    const float shift = filter.empty() ? 0.0f : chip_->width() + 12;
+    chip_->setPosition(theme::layout::marginX, 80);
+    subtitle_->setFrame({theme::layout::marginX + shift, 82, 760 - shift, 22});
+    subtitle_->setText(joinDots({count, sort}));
     filterBtn_->setActive(filter_ != Filter::All || genre_ != spec_.genre);
 }
 
@@ -414,6 +540,18 @@ void LibraryScreen::jumpTo(const std::string& letter) {
         Settings::instance().set("ui.library_sort", 0);
         Settings::instance().set("ui.library_desc", false);
     }
+    if (lockFiltered_) {
+        if (needsResort) {
+            pendingJump_ = letter;
+            reload();
+            return;
+        }
+        if (items_.empty()) return;
+        const size_t target = indexForLetter(letter);
+        ensurePage(target / kPageSize);
+        grid_->focusIndex(target);
+        return;
+    }
     if (letter == "#") {
         if (needsResort) reload();
         else grid_->focusIndex(0);
@@ -445,6 +583,10 @@ void LibraryScreen::jumpTo(const std::string& letter) {
 void LibraryScreen::onShow() {
     if (!shownOnce_) {
         shownOnce_ = true;
+        return;
+    }
+    if (LibraryLock::instance().revision() != lockRevision_ && (lockFiltered_ || needsLockFilter())) {
+        reload();
         return;
     }
     // Watched state / progress may have changed in the player or on a detail page: quietly

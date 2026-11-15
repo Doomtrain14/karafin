@@ -52,7 +52,7 @@ ApiError transportError(const http::Response& resp, ErrorContext ctx) {
         default: break;
     }
     if (!platform::networkConnected())
-        return ApiError::make(ErrorKind::Offline, "No internet connection. Check the console's network settings.", 0,
+        return ApiError::make(ErrorKind::Offline, "No network connection. Check the console's network settings.", 0,
                               detail);
     switch (resp.error) {
         case http::Error::Resolve:

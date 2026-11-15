@@ -21,7 +21,12 @@ bool isDocked();             // AppletOperationMode_Console
 bool hasFocus();             // false while HOME menu / an overlay applet is in front
 bool nxlinkConnected();      // stdout goes to `nxlink -s` on the PC
 bool romfsMounted();
-bool networkConnected();     // nifm reports an internet connection
+// Stable opaque id for the Switch profile selected at launch (or last opened profile when
+// no launch selection is available). Empty if the account service is unavailable.
+std::string switchProfileId();
+// Network link is up: nifm reports internet, or the console has a local IP (LAN without internet,
+// DNS-blocked setups). Cached for about a second.
+bool networkConnected();
 
 struct BatteryState {
     int percent = 0;

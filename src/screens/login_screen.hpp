@@ -17,6 +17,7 @@ namespace karafin::screens {
 
 // "Who's watching?": remembered accounts (instant sign-in), public users (password via the
 // system keyboard), "Other user" (username + password), Quick Connect and change server.
+// Profiles that ask for their lock code (LibraryLock) get a lock badge and ask before signing in.
 class LoginScreen : public ui::Screen {
 public:
     // `client`: an unauthenticated client for the server.
@@ -52,6 +53,7 @@ private:
     StatusView* status_ = nullptr;
     ui::Ref<BusyModal> busy_;
     bool quickConnect_ = false;
+    std::string codeCheckedFor_;  // user whose profile code was entered on this screen
     float t_ = 0;
     CancelToken token_;
     CancelToken authToken_;

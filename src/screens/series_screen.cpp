@@ -59,8 +59,7 @@ SeriesScreen::SeriesScreen(std::string seriesId, std::string seasonId)
     chips_ = header_->add<ChipRow>();
     genres_ = header_->add<Label>("", theme::type::callout, theme::color::textSecondary);
     genres_->setPreferredSize(kTextWidth, -1);
-    overview_ = header_->add<Label>("", theme::type::body, theme::color::textSecondary);
-    overview_->setMaxLines(3);
+    overview_ = header_->add<OverviewText>(3);
     overview_->setPreferredSize(kTextWidth - 40, -1);
 
     auto* buttons = header_->add<Box>(Axis::Horizontal);
@@ -195,6 +194,7 @@ void SeriesScreen::populate(const jf::BaseItem& series) {
     genres_->setText(genresText(series_, 4));
     genres_->setVisible(!genres_->text().empty());
     overview_->setText(series_.overview);
+    overview_->setSheetTitle(series_.name);
     overview_->setVisible(!series_.overview.empty());
     download_->setGroup(series_);
     updateUserButtons();
@@ -501,10 +501,12 @@ void SeriesScreen::refreshQuietly() {
 
 void SeriesScreen::toggleFavorite() {
     auto client = jf::currentClient();
-    if (!client || !loaded_) return;
+    if (!client || !loaded_ || favPending_) return;
     const bool fav = !series_.userData.isFavorite;
+    favPending_ = true;
     client->setFavorite(series_.id, fav).then(
         [this, fav](jf::Result<jf::UserData> r) {
+            favPending_ = false;
             if (!r) {
                 toast(errorMessage(r.error), ToastKind::Error, gfx::Icon::Warning);
                 return;
@@ -518,10 +520,12 @@ void SeriesScreen::toggleFavorite() {
 
 void SeriesScreen::toggleWatched() {
     auto client = jf::currentClient();
-    if (!client || !loaded_) return;
+    if (!client || !loaded_ || watchedPending_) return;
     const bool played = !series_.userData.played;
+    watchedPending_ = true;
     client->setPlayed(series_.id, played).then(
         [this, played](jf::Result<jf::UserData> r) {
+            watchedPending_ = false;
             if (!r) {
                 toast(errorMessage(r.error), ToastKind::Error, gfx::Icon::Warning);
                 return;
@@ -539,11 +543,13 @@ void SeriesScreen::toggleWatched() {
 
 void SeriesScreen::toggleSeasonWatched() {
     auto client = jf::currentClient();
-    if (!client || selected_ >= seasons_.size()) return;
+    if (!client || selected_ >= seasons_.size() || seasonWatchedPending_) return;
     const bool played = !seasonWatched_->active();
     const std::string seasonId = seasons_[selected_].id;
+    seasonWatchedPending_ = true;
     client->setPlayed(seasonId, played).then(
         [this, played, seasonId](jf::Result<jf::UserData> r) {
+            seasonWatchedPending_ = false;
             if (!r) {
                 toast(errorMessage(r.error), ToastKind::Error, gfx::Icon::Warning);
                 return;

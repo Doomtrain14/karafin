@@ -49,7 +49,7 @@ DownloadsSection::DownloadsSection(MainMode mode) : mode_(mode) {
     title_ = add<Label>("Downloads", theme::type::title1);
     title_->setFrame({theme::layout::marginX, kTitleY, 500, 36});
     summary_ = add<Label>("", theme::type::callout, theme::color::textSecondary);
-    summary_->setFrame({theme::layout::marginX, kTitleY + 38, 700, 22});
+    summary_->setFrame({theme::layout::marginX, kTitleY + 38, 860, 22});
 
     auto* buttons = add<Box>(Axis::Horizontal);
     buttons->setSpacing(12);
@@ -128,6 +128,7 @@ void DownloadsSection::onEvent(const dl::Event& e) {
         if (it != pendingRows_.end() && e.info.state != dl::State::Completed) {
             it->second->setInfo(e.info);
             if (e.type == dl::EventType::Updated) updateHeader();
+            else updateThroughput();
             return;
         }
         if (e.type == dl::EventType::Progress) return;
@@ -337,14 +338,26 @@ void DownloadsSection::updateHeader() {
         else if (info->state == dl::State::Failed) ++failed;
         else ++active;
     }
-    summary_->setText(joinDots({active > 0 ? std::format("{} downloading", active) : "",
-                                paused > 0 ? std::format("{} paused", paused) : "",
-                                failed > 0 ? std::format("{} failed", failed) : "",
-                                st.completedCount > 0 ? std::format("{} downloaded", st.completedCount) : "",
-                                st.reservedBytes > 0 ? formatBytes(st.reservedBytes) + " to go" : ""}));
+    summaryLead_ = joinDots({active > 0 ? std::format("{} downloading", active) : "",
+                             paused > 0 ? std::format("{} paused", paused) : "",
+                             failed > 0 ? std::format("{} failed", failed) : ""});
+    summaryTail_ = joinDots({st.completedCount > 0 ? std::format("{} downloaded", st.completedCount) : "",
+                             st.reservedBytes > 0 ? formatBytes(st.reservedBytes) + " to go" : ""});
     pauseAll_->setEnabled(active > 0);
     resumeAll_->setEnabled(paused > 0 || failed > 0);
     deleteWatched_->setEnabled(st.completedCount > 0);
+    updateThroughput();
+}
+
+void DownloadsSection::updateThroughput() {
+    const auto now = std::chrono::steady_clock::now();
+    const double dt = meterAt_ == std::chrono::steady_clock::time_point{}
+                          ? 0.0
+                          : std::chrono::duration<double>(now - meterAt_).count();
+    meterAt_ = now;
+    meter_.update(dl::DownloadManager::instance().pending(), dt);
+    summary_->setText(joinDots({summaryLead_, formatSpeed(meter_.bytesPerSecond()), formatEta(meter_.etaSeconds()),
+                                summaryTail_}));
 }
 
 }  // namespace karafin::screens

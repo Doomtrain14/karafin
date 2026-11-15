@@ -49,7 +49,7 @@ class SearchSection::Field : public View {
 public:
     Field() {
         setFocusable(true);
-        setHints({{Key::A, "Type"}});
+        setHints({{Key::A, "Search"}});
     }
     std::string text;
 

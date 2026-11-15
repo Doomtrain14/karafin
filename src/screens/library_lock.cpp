@@ -4,7 +4,9 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstring>
+#include <format>
 #include <memory>
 #include <random>
 
@@ -24,12 +26,18 @@ namespace karafin::screens {
 
 using namespace karafin::ui;
 namespace jf = karafin::jellyfin;
+using json = nlohmann::json;
 
 namespace {
 
-constexpr const char* kCodeKey = "lock.code";
-constexpr const char* kLibrariesKey = "lock.libraries";
+constexpr const char* kProfilesKey = "lock.profiles";
+// Global keys from 1.0.4, moved into the first profile that signs in.
+constexpr const char* kOldCodeKey = "lock.code";
+constexpr const char* kOldLibrariesKey = "lock.libraries";
 constexpr int kHashRounds = 20000;
+constexpr int kTriesPerPause = 5;
+constexpr int kFirstPause = 30;   // seconds
+constexpr int kLongestPause = 300;
 
 using Digest = std::array<unsigned char, 32>;
 
@@ -81,6 +89,28 @@ bool parseStored(const std::string& stored, int& length, std::string& salt, std:
     return !salt.empty() && !hash.empty();
 }
 
+int64_t nowSeconds() {
+    return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
+// Length of the pause after the n-th batch of wrong codes (n >= 1).
+int pauseFor(int batch) { return std::min(kLongestPause, kFirstPause << std::clamp(batch - 1, 0, 4)); }
+
+template <class T>
+T field(const json& obj, const char* name, T fallback) {
+    const auto it = obj.find(name);
+    if (it == obj.end()) return fallback;
+    try {
+        return it->get<T>();
+    } catch (const json::exception&) {
+        return fallback;
+    }
+}
+
+std::string profileKey(const std::string& serverId, const std::string& userId) {
+    return serverId.empty() || userId.empty() ? std::string() : serverId + "/" + userId;
+}
+
 }  // namespace
 
 LibraryLock& LibraryLock::instance() {
@@ -88,83 +118,200 @@ LibraryLock& LibraryLock::instance() {
     return lock;
 }
 
-int LibraryLock::codeLength() const {
-    int length = 0;
-    std::string salt, hash;
-    return parseStored(Settings::instance().get<std::string>(kCodeKey, ""), length, salt, hash) ? length : 0;
+// ---- Stored profiles ----------------------------------------------------------------------------
+
+LibraryLock::Profile LibraryLock::readProfile(const std::string& key, bool migrate) {
+    Profile p;
+    p.key = key;
+    if (key.empty()) return p;
+    Settings& s = Settings::instance();
+    const json all = s.getJson(kProfilesKey);
+    if (!all.is_object() || !all.contains(key)) {
+        if (migrate && (s.contains(kOldCodeKey) || s.contains(kOldLibrariesKey))) {
+            if (!parseStored(s.get<std::string>(kOldCodeKey, ""), p.length, p.salt, p.hash)) p.length = 0;
+            const json ids = s.getJson(kOldLibrariesKey);
+            if (ids.is_array())
+                for (const auto& v : ids)
+                    if (v.is_string()) p.libraries.insert(v.get<std::string>());
+            s.remove(kOldCodeKey);
+            s.remove(kOldLibrariesKey);
+            s.remove("lock.password_hash");  // text password from early 1.0.4 builds
+            writeProfile(p);
+            log::info("lock", "moved the library lock settings to profile {}", key);
+        }
+        return p;
+    }
+    const json& e = all[key];
+    if (!e.is_object()) return p;
+    if (!parseStored(field<std::string>(e, "code", ""), p.length, p.salt, p.hash)) p.length = 0;
+    if (const auto it = e.find("libraries"); it != e.end() && it->is_array())
+        for (const auto& v : *it)
+            if (v.is_string()) p.libraries.insert(v.get<std::string>());
+    p.askOnOpen = p.length > 0 && field<bool>(e, "askOnOpen", false);
+    p.failures = std::max(0, field<int>(e, "failures", 0));
+    p.lockoutUntil = field<int64_t>(e, "lockoutUntil", 0);
+    return p;
 }
 
-bool LibraryLock::hasCode() const { return codeLength() > 0; }
-
-std::vector<std::string> LibraryLock::lockedIds() const {
-    std::vector<std::string> ids;
-    const auto json = Settings::instance().getJson(kLibrariesKey);
-    if (json.is_array())
-        for (const auto& v : json)
-            if (v.is_string()) ids.push_back(v.get<std::string>());
-    return ids;
+void LibraryLock::writeProfile(const Profile& p) {
+    if (p.key.empty()) return;
+    Settings& s = Settings::instance();
+    json all = s.getJson(kProfilesKey);
+    if (!all.is_object()) all = json::object();
+    const bool empty = p.length == 0 && p.libraries.empty() && p.failures == 0;
+    if (empty) {
+        all.erase(p.key);
+    } else {
+        json e = json::object();
+        if (p.length > 0) e["code"] = std::to_string(p.length) + ":" + p.salt + ":" + p.hash;
+        if (!p.libraries.empty()) e["libraries"] = std::vector<std::string>(p.libraries.begin(), p.libraries.end());
+        if (p.askOnOpen) e["askOnOpen"] = true;
+        if (p.failures > 0) e["failures"] = p.failures;
+        if (p.lockoutUntil > 0) e["lockoutUntil"] = p.lockoutUntil;
+        all[p.key] = std::move(e);
+    }
+    if (all.empty()) s.remove(kProfilesKey);
+    else s.setJson(kProfilesKey, std::move(all));
+    s.saveIfDirty(0.0);
 }
 
-void LibraryLock::setLockedIds(const std::vector<std::string>& ids) {
-    if (ids.empty()) Settings::instance().remove(kLibrariesKey);
-    else Settings::instance().setJson(kLibrariesKey, ids);
-    Settings::instance().saveIfDirty(0.0);
+int LibraryLock::lockoutLeft(const Profile& p) {
+    const int64_t left = p.lockoutUntil - nowSeconds();
+    if (p.lockoutUntil <= 0 || left <= 0) return 0;
+    // A clock set back can't stretch the pause beyond its length.
+    return static_cast<int>(std::min<int64_t>(left, pauseFor(std::max(1, p.failures / kTriesPerPause))));
+}
+
+bool LibraryLock::checkCode(Profile& p, const std::string& code, std::string& error) {
+    if (lockoutLeft(p) > 0) {
+        error = "Too many tries. Wait a moment.";
+        return false;
+    }
+    if (p.length > 0 && static_cast<int>(code.size()) == p.length && hashCode(p.salt, code) == p.hash) {
+        if (p.failures > 0 || p.lockoutUntil > 0) {
+            p.failures = 0;
+            p.lockoutUntil = 0;
+            writeProfile(p);
+        }
+        return true;
+    }
+    ++p.failures;
+    const int left = kTriesPerPause - p.failures % kTriesPerPause;
+    if (left == kTriesPerPause) {
+        p.lockoutUntil = nowSeconds() + pauseFor(p.failures / kTriesPerPause);
+        error = "Wrong code.";
+    } else if (left <= 2) {
+        error = left == 1 ? "Wrong code. 1 more try before a pause." : "Wrong code. 2 more tries before a pause.";
+    } else {
+        error = "Wrong code. Try again.";
+    }
+    writeProfile(p);
+    return false;
+}
+
+// ---- Current profile ----------------------------------------------------------------------------
+
+void LibraryLock::sync() const {
+    auto client = jf::currentClient();
+    if (synced_ && !client_.owner_before(client) && !client.owner_before(client_)) return;
+    synced_ = true;
+    client_ = client;
+    const std::string key = client ? profileKey(client->serverId(), client->userId()) : std::string();
+    if (key == profile_.key && !key.empty()) return;
+    profile_ = readProfile(key, true);
+    unlocked_.clear();
+    hidden_.clear();
+    hiddenKey_.clear();
+    loadingKey_.clear();
+    token_.cancel();
+    token_.reset();
+    // The stack is reset on a profile switch, so nobody is left waiting for the old titles.
+    waiters_.clear();
+    ++revision_;
+}
+
+uint64_t LibraryLock::revision() const {
+    sync();
+    return revision_;
+}
+
+bool LibraryLock::hasCode() const {
+    sync();
+    return profile_.length > 0;
 }
 
 bool LibraryLock::isLocked(const std::string& libraryId) const {
-    const auto ids = lockedIds();
-    return std::find(ids.begin(), ids.end(), libraryId) != ids.end();
+    sync();
+    return profile_.libraries.contains(libraryId);
+}
+
+bool LibraryLock::blocksCached(const std::string& libraryId) const {
+    return profile_.length > 0 && !unlocked_.contains(libraryId) && profile_.libraries.contains(libraryId);
 }
 
 bool LibraryLock::blocks(const std::string& libraryId) const {
-    return hasCode() && !unlocked_.contains(libraryId) && isLocked(libraryId);
+    sync();
+    return blocksCached(libraryId);
 }
 
-bool LibraryLock::active() const {
-    if (!hasCode()) return false;
-    for (const auto& id : lockedIds())
+bool LibraryLock::activeCached() const {
+    if (profile_.length == 0) return false;
+    for (const auto& id : profile_.libraries)
         if (!unlocked_.contains(id)) return true;
     return false;
 }
 
+bool LibraryLock::active() const {
+    sync();
+    return activeCached();
+}
+
 bool LibraryLock::anyUnlocked() const {
-    if (!hasCode()) return false;
-    for (const auto& id : lockedIds())
+    sync();
+    if (profile_.length == 0) return false;
+    for (const auto& id : profile_.libraries)
         if (unlocked_.contains(id)) return true;
     return false;
 }
 
-bool LibraryLock::hides(const jf::BaseItem& item) const {
-    if (hidden_.empty() || !active()) return false;
+bool LibraryLock::hidesCached(const jf::BaseItem& item) const {
     for (const auto& [library, titles] : hidden_) {
-        if (!blocks(library)) continue;
+        if (!blocksCached(library)) continue;
         for (const std::string* id : {&item.id, &item.seriesId, &item.parentId})
             if (!id->empty() && titles.contains(*id)) return true;
     }
     return false;
 }
 
+bool LibraryLock::hides(const jf::BaseItem& item) const {
+    sync();
+    return !hidden_.empty() && activeCached() && hidesCached(item);
+}
+
 std::vector<jf::BaseItem> LibraryLock::filter(const std::vector<jf::BaseItem>& items, bool* removed) const {
+    sync();
+    if (hidden_.empty() || !activeCached()) {
+        if (removed) *removed = false;
+        return items;
+    }
     std::vector<jf::BaseItem> out;
     out.reserve(items.size());
     for (const auto& it : items)
-        if (!hides(it)) out.push_back(it);
+        if (!hidesCached(it)) out.push_back(it);
     if (removed) *removed = out.size() != items.size();
     return out;
 }
 
 std::string LibraryLock::cacheKey() const {
-    auto client = jf::currentClient();
-    auto ids = lockedIds();
-    std::sort(ids.begin(), ids.end());
-    std::string key = client ? client->serverId() + "/" + client->userId() : std::string();
-    for (const auto& id : ids) key += ";" + id;
+    std::string key = profile_.key;
+    for (const auto& id : profile_.libraries) key += ";" + id;
     return key;
 }
 
 void LibraryLock::prepare(std::function<void()> done) {
+    sync();
     auto client = jf::currentClient();
-    if (!active() || !client) {
+    if (!activeCached() || !client) {
         if (done) done();
         return;
     }
@@ -178,7 +325,7 @@ void LibraryLock::prepare(std::function<void()> done) {
     loadingKey_ = key;
 
     // Every locked library is listed (unlocked ones too), so locking one again needs no reload.
-    const auto ids = lockedIds();
+    const std::set<std::string> ids = profile_.libraries;
     auto found = std::make_shared<std::map<std::string, std::set<std::string>>>();
     auto remaining = std::make_shared<size_t>(ids.size());
     auto failed = std::make_shared<bool>(false);
@@ -225,40 +372,54 @@ void LibraryLock::changed() {
     for (auto& w : waiters) prepare(std::move(w));
 }
 
-bool LibraryLock::verify(const std::string& code) const {
-    int length = 0;
-    std::string salt, hash;
-    if (!parseStored(Settings::instance().get<std::string>(kCodeKey, ""), length, salt, hash)) return false;
-    return static_cast<int>(code.size()) == length && hashCode(salt, code) == hash;
-}
+// ---- Code entry ---------------------------------------------------------------------------------
 
 void LibraryLock::storeCode(const std::string& code) {
-    const std::string salt = randomSalt();
-    Settings::instance().set(kCodeKey, std::to_string(code.size()) + ":" + salt + ":" + hashCode(salt, code));
-    Settings::instance().remove("lock.password_hash");  // text password from early 1.0.4 builds
-    Settings::instance().saveIfDirty(0.0);
+    sync();
+    profile_.length = static_cast<int>(code.size());
+    profile_.salt = randomSalt();
+    profile_.hash = hashCode(profile_.salt, code);
+    profile_.failures = 0;
+    profile_.lockoutUntil = 0;
+    writeProfile(profile_);
 }
 
-void LibraryLock::askCode(std::string title, std::string message, std::function<void()> onCorrect) {
+void LibraryLock::askCode(const std::string& key, int length, std::string title, std::string message,
+                          std::function<void()> onCorrect, std::function<void()> onCancel) {
     PinPadSpec spec;
     spec.title = std::move(title);
     spec.message = std::move(message);
-    spec.length = codeLength();
-    spec.onSubmit = [this, onCorrect](const std::string& code, std::string& error) {
-        if (!verify(code)) {
-            error = "Wrong code. Try again.";
-            return false;
+    spec.length = length;
+    spec.lockout = [this, key] {
+        sync();
+        return lockoutLeft(key == profile_.key ? profile_ : readProfile(key, false));
+    };
+    spec.onSubmit = [this, key, onCorrect](const std::string& code, std::string& error) {
+        sync();
+        const bool current = key == profile_.key;
+        Profile p = current ? profile_ : readProfile(key, false);
+        const bool ok = checkCode(p, code, error);
+        if (current) {
+            profile_.failures = p.failures;
+            profile_.lockoutUntil = p.lockoutUntil;
         }
+        if (!ok) return false;
         if (onCorrect) onCorrect();
         return true;
     };
+    spec.onCancel = std::move(onCancel);
     present(std::make_unique<PinPad>(std::move(spec)));
+}
+
+void LibraryLock::askCode(std::string title, std::string message, std::function<void()> onCorrect) {
+    sync();
+    askCode(profile_.key, profile_.length, std::move(title), std::move(message), std::move(onCorrect), {});
 }
 
 void LibraryLock::askNewCode(std::function<void()> onSet) {
     PinPadSpec first;
     first.title = "New lock code";
-    first.message = "Enter 4 or 6 directions with the D-pad";
+    first.message = "Enter 4 or 6 directions with the D-pad or the arrows";
     first.onSubmit = [this, onSet](const std::string& code, std::string&) {
         PinPadSpec confirm;
         confirm.title = "Confirm code";
@@ -279,12 +440,15 @@ void LibraryLock::askNewCode(std::function<void()> onSet) {
     present(std::make_unique<PinPad>(std::move(first)));
 }
 
+// ---- Library actions ----------------------------------------------------------------------------
+
 void LibraryLock::requestUnlock(const jf::BaseItem& library, std::function<void()> onUnlocked) {
     if (!blocks(library.id)) {
         if (onUnlocked) onUnlocked();
         return;
     }
     askCode("Locked library", "Enter the code to open " + library.name, [this, id = library.id, onUnlocked] {
+        sync();
         unlocked_.insert(id);
         ++revision_;
         if (onUnlocked) onUnlocked();
@@ -292,11 +456,13 @@ void LibraryLock::requestUnlock(const jf::BaseItem& library, std::function<void(
 }
 
 void LibraryLock::relock(const std::string& libraryId) {
+    sync();
     if (unlocked_.erase(libraryId) > 0) ++revision_;
     toast("Library locked again", ToastKind::Success, gfx::Icon::Lock);
 }
 
 void LibraryLock::lockNow() {
+    sync();
     if (!unlocked_.empty()) {
         unlocked_.clear();
         ++revision_;
@@ -306,9 +472,9 @@ void LibraryLock::lockNow() {
 
 void LibraryLock::lockLibrary(const jf::BaseItem& library, std::function<void()> onChanged) {
     auto lock = [this, id = library.id, onChanged] {
-        auto ids = lockedIds();
-        if (std::find(ids.begin(), ids.end(), id) == ids.end()) ids.push_back(id);
-        setLockedIds(ids);
+        sync();
+        profile_.libraries.insert(id);
+        writeProfile(profile_);
         unlocked_.erase(id);
         changed();
         toast("Library locked", ToastKind::Success, gfx::Icon::Lock);
@@ -320,7 +486,8 @@ void LibraryLock::lockLibrary(const jf::BaseItem& library, std::function<void()>
     }
     present(Dialog::confirm("Lock " + library.name + "?",
                             "Choose a D-pad code first. It's needed to open locked libraries, and their titles are "
-                            "left out of Home and Search while they are locked.",
+                            "left out of Home, Search and other lists while they are locked. The code and locks are "
+                            "for this profile only.",
                             "Choose code", "Cancel", [this, lock](bool ok) {
                                 if (ok) askNewCode(lock);
                             }));
@@ -328,9 +495,9 @@ void LibraryLock::lockLibrary(const jf::BaseItem& library, std::function<void()>
 
 void LibraryLock::removeLock(const jf::BaseItem& library, std::function<void()> onChanged) {
     askCode("Remove lock", "Enter the code to remove the lock from " + library.name, [this, id = library.id, onChanged] {
-        auto ids = lockedIds();
-        std::erase(ids, id);
-        setLockedIds(ids);
+        sync();
+        profile_.libraries.erase(id);
+        writeProfile(profile_);
         unlocked_.erase(id);
         changed();
         toast("Lock removed", ToastKind::Success, gfx::Icon::Lock);
@@ -375,15 +542,54 @@ void LibraryLock::changeCode(std::function<void()> onDone) {
 
 void LibraryLock::removeCode(std::function<void()> onDone) {
     if (!hasCode()) return;
-    askCode("Turn off library lock", "Enter the code. Every library lock is removed too.", [this, onDone] {
-        Settings::instance().remove(kCodeKey);
-        setLockedIds({});
-        unlocked_.clear();
-        hidden_.clear();
-        changed();
-        toast("Library lock turned off", ToastKind::Success, gfx::Icon::Lock);
-        if (onDone) onDone();
-    });
+    askCode("Turn off lock code", "Enter the code. Every library lock and the profile code are removed too.",
+            [this, onDone] {
+                sync();
+                profile_ = Profile{.key = profile_.key};
+                writeProfile(profile_);
+                unlocked_.clear();
+                hidden_.clear();
+                changed();
+                toast("Lock code turned off", ToastKind::Success, gfx::Icon::Lock);
+                if (onDone) onDone();
+            });
+}
+
+// ---- Profile code -------------------------------------------------------------------------------
+
+bool LibraryLock::asksOnOpen() const {
+    sync();
+    return profile_.length > 0 && profile_.askOnOpen;
+}
+
+void LibraryLock::setAsksOnOpen(bool on, std::function<void()> onDone) {
+    if (!hasCode() || asksOnOpen() == on) return;
+    askCode(on ? "Ask for code" : "Stop asking for code",
+            on ? "Enter the code. It will be needed to open this profile." : "Enter the code to stop asking for it",
+            [this, on, onDone] {
+                sync();
+                profile_.askOnOpen = on;
+                writeProfile(profile_);
+                toast(on ? "This profile now asks for the code" : "This profile opens without the code",
+                      ToastKind::Success, gfx::Icon::Lock);
+                if (onDone) onDone();
+            });
+}
+
+bool LibraryLock::profileNeedsCode(const std::string& serverId, const std::string& userId) {
+    const Profile p = readProfile(profileKey(serverId, userId), false);
+    return p.length > 0 && p.askOnOpen;
+}
+
+void LibraryLock::askProfileCode(const std::string& serverId, const std::string& userId, const std::string& name,
+                                 std::function<void()> onCorrect, std::function<void()> onCancel) {
+    const Profile p = readProfile(profileKey(serverId, userId), false);
+    if (p.length == 0 || !p.askOnOpen) {
+        if (onCorrect) onCorrect();
+        return;
+    }
+    askCode(p.key, p.length, "Profile locked", "Enter the code to open " + name, std::move(onCorrect),
+            std::move(onCancel));
 }
 
 }  // namespace karafin::screens

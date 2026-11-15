@@ -80,22 +80,24 @@ bool ItemCard::onInput(const InputEvent& e) {
 
 void ItemCard::toggleWatched() {
     auto client = jellyfin::currentClient();
-    if (!client) return;
+    if (!client || watchedPendingId_ == item_.id) return;
     const bool played = !item_.userData.played;
+    watchedPendingId_ = item_.id;
     client->setPlayed(item_.id, played).then(
         [this, played, id = item_.id](jellyfin::Result<jellyfin::UserData> r) {
-            if (item_.id != id) return;  // recycled grid cell
+            if (watchedPendingId_ == id) watchedPendingId_.clear();
             if (!r) {
                 toast(errorMessage(r.error), ToastKind::Error, gfx::Icon::Warning);
                 return;
             }
+            toast(played ? "Marked as watched" : "Marked as unwatched", ToastKind::Success, gfx::Icon::Check, 1.8f);
+            if (item_.id != id) return;  // recycled grid cell
             jellyfin::BaseItem updated = item_;
             updated.userData.played = r->played;
             updated.userData.playbackPositionTicks = r->playbackPositionTicks;
             updated.userData.playedPercentage = r->playedPercentage;
             updated.userData.unplayedItemCount = r->unplayedItemCount;
             setItem(updated);
-            toast(played ? "Marked as watched" : "Marked as unwatched", ToastKind::Success, gfx::Icon::Check, 1.8f);
         },
         token_);
 }

@@ -47,6 +47,7 @@ private:
     ui::ImageView* thumb_ = nullptr;
     DownloadButton* download_ = nullptr;
     ui::Animated<float> focus_{0.0f};
+    bool watchedPending_ = false;
     CancelToken token_;
 };
 

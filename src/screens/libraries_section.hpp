@@ -13,8 +13,9 @@
 
 namespace karafin::screens {
 
-// "Libraries" tab: the user's media libraries as large tiles, plus Favorites. X locks / unlocks
-// a library (LibraryLock); Y asks the server to scan it (administrators only).
+// "Libraries" tab: the user's media libraries as large tiles, plus Favorites. Locked libraries show a
+// lock symbol. X locks / unlocks a library (LibraryLock); Y asks the server to scan it (administrators
+// only).
 class LibrariesSection : public SectionView {
 public:
     LibrariesSection();

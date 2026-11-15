@@ -9,6 +9,7 @@
 #include "gfx/text.hpp"
 #include "screens/common.hpp"
 #include "screens/keyboard.hpp"
+#include "screens/library_lock.hpp"
 #include "screens/server_screen.hpp"
 #include "screens/session.hpp"
 #include "screens/widgets/avatar_tile.hpp"
@@ -26,6 +27,22 @@ namespace {
 constexpr float kUsersY = 238;
 constexpr float kActionsY = 500;
 constexpr size_t kMaxTiles = 6;  // + "Other user": 7 tiles fit the screen width
+
+// Lock badge on the top-right of an avatar whose profile asks for its code.
+class ProfileLockMark : public View {
+public:
+    ProfileLockMark() {
+        const float tileW = AvatarTile::kSize + 24;
+        setFrame({tileW - 12 - 30 + 3, -3, 30, 30});
+    }
+
+    void draw(Renderer& r) override {
+        const Vec2 c{width() * 0.5f, height() * 0.5f};
+        r.fillCircle(c, 15, theme::color::background);
+        r.fillCircle(c, 12, theme::color::surfaceHighest);
+        gfx::drawIcon(r, gfx::Icon::Lock, {c.x - 7, c.y - 7, 14, 14}, theme::color::textPrimary, 1.3f);
+    }
+};
 }  // namespace
 
 LoginScreen::LoginScreen(jf::ClientPtr client) : client_(std::move(client)) {
@@ -106,7 +123,14 @@ void LoginScreen::buildUsers() {
             tile->setCaption("Signed in");
             tile->setHints({{Key::Y, "Forget"}});
             const jf::StoredUser user = u;
-            tile->onActivate = [this, user] { signInStored(user); };
+            if (LibraryLock::profileNeedsCode(client_->serverId(), u.id)) tile->add<ProfileLockMark>();
+            tile->onActivate = [this, user] {
+                LibraryLock::instance().askProfileCode(client_->serverId(), user.id, user.name, guard([this, user] {
+                                                           codeCheckedFor_ = user.id;
+                                                           signInStored(user);
+                                                       }),
+                                                       {});
+            };
             tile->onSecondary = [this, user] {
                 present(Dialog::confirm("Forget " + user.name + "?", "The saved sign-in on this console will be removed.",
                                         "Forget", "Cancel", guard([this, id = user.id](bool ok) {
@@ -124,10 +148,16 @@ void LoginScreen::buildUsers() {
         const std::string url = client_->userImageUrl(u.id, u.primaryImageTag, {.maxWidth = 240});
         auto* tile = users_->add<AvatarTile>(u.name, url);
         const std::string name = u.name;
+        const std::string id = u.id;
         const bool needsPassword = u.hasPassword || u.hasConfiguredPassword;
-        tile->onActivate = [this, name, needsPassword] {
-            if (needsPassword) askPassword(name, true);
-            else authenticate(name, "");
+        if (LibraryLock::profileNeedsCode(client_->serverId(), id)) tile->add<ProfileLockMark>();
+        tile->onActivate = [this, id, name, needsPassword] {
+            LibraryLock::instance().askProfileCode(client_->serverId(), id, name, guard([this, id, name, needsPassword] {
+                                                       codeCheckedFor_ = id;
+                                                       if (needsPassword) askPassword(name, true);
+                                                       else authenticate(name, "");
+                                                   }),
+                                                   {});
         };
         shownIds.push_back(u.id);
     }
@@ -246,7 +276,16 @@ void LoginScreen::startQuickConnect() {
     present(std::make_unique<QuickConnectModal>(client_, guard([this] { succeed(client_); })));
 }
 
-void LoginScreen::succeed(jf::ClientPtr client) { enterApp(std::move(client)); }
+void LoginScreen::succeed(jf::ClientPtr client) {
+    // Profiles reached by name or Quick Connect ask for their code here.
+    const std::string userId = client->userId();
+    if (userId == codeCheckedFor_) {
+        enterApp(std::move(client));
+        return;
+    }
+    LibraryLock::instance().askProfileCode(client->serverId(), userId, client->user().name,
+                                           [client] { enterApp(client); }, {});
+}
 
 void LoginScreen::onShow() {
     // At the root (session expired, switch user) B goes to the server list; otherwise the

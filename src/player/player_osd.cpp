@@ -152,7 +152,8 @@ bool PlayerScreen::onTouchEvent(const SDL_Event& e) {
             for (const auto& hit : hits_)
                 if (hit.rect.contains(p)) onButton = true;
             if (!swipe_.begin(p.x, p.y, theme::layout::screenWidth, theme::layout::screenHeight,
-                              touchOnBar_ || onButton || phase_ != Phase::Playing || !fileLoaded_))
+                              touchOnBar_ || onButton || phase_ != Phase::Playing || !fileLoaded_,
+                              !platform::isDocked()))
                 log::warn("player", "cannot start swipe with invalid touch geometry");
         }
     } else if (e.type == SDL_FINGERMOTION && touchActive_) {
@@ -172,11 +173,6 @@ bool PlayerScreen::onTouchEvent(const SDL_Event& e) {
                 const bool brightness = control == PlaybackSwipe::Control::Brightness;
                 if (before == PlaybackSwipe::Control::None) {
                     if (brightness) {
-                        if (platform::isDocked()) {
-                            ui::toast("Brightness is only available in handheld mode", ui::ToastKind::Warning);
-                            swipe_.cancel();
-                            return true;
-                        }
                         const auto value = brightness_.current();
                         if (!value) {
                             ui::toast("Unable to adjust screen brightness", ui::ToastKind::Warning);
@@ -216,6 +212,7 @@ bool PlayerScreen::onTouchEvent(const SDL_Event& e) {
                     }
                     adjustmentValue_ = value;
                     adjustingBrightness_ = brightness;
+                    adjustmentLeft_ = swipe_.left();
                     adjustmentLabel_ = label;
                 }
                 adjustmentTimer_ = 1.5;
@@ -258,6 +255,21 @@ void PlayerScreen::runHit(HitAction action) {
 }
 
 bool PlayerScreen::onTap(Vec2 local) {
+    // The volume indicator takes taps while shown: a double tap resets to 100%. It is not a hit
+    // area, so a new swipe may still start on it.
+    if (adjustmentTimer_ > 0 && !adjustingBrightness_ && !modalOpen_ && adjustmentRect().expanded(12).contains(local)) {
+        lastTapAt_ = -1;
+        const double now = ui::now();
+        if (now - lastIndicatorTapAt_ < 0.35) {
+            lastIndicatorTapAt_ = -1;
+            resetVolume();
+        } else {
+            lastIndicatorTapAt_ = now;
+            adjustmentTimer_ = std::max(adjustmentTimer_, 1.5);
+        }
+        return true;
+    }
+    lastIndicatorTapAt_ = -1;
     for (auto it = hits_.rbegin(); it != hits_.rend(); ++it) {
         if (it->rect.contains(local)) {
             lastTapAt_ = -1;
@@ -350,25 +362,57 @@ void PlayerScreen::draw(ui::Renderer& r) {
     drawAdjustment(r);
 }
 
-void PlayerScreen::drawAdjustment(ui::Renderer& r) {
-    if (adjustmentTimer_ <= 0 || modalOpen_) return;
+Rect PlayerScreen::adjustmentRect() const {
     // Vertical pill on the side being swiped, so the fill follows the finger's direction.
     constexpr float w = 64, h = 300;
-    const float x = adjustingBrightness_ ? 72.0f : theme::layout::screenWidth - 72.0f - w;
-    const Rect box{x, (theme::layout::screenHeight - h) * 0.5f, w, h};
+    const float x = adjustmentLeft_ ? 72.0f : theme::layout::screenWidth - 72.0f - w;
+    return {x, (theme::layout::screenHeight - h) * 0.5f, w, h};
+}
+
+void PlayerScreen::resetVolume() {
+    if (!mpv_) return;
+    int rc = mpv_->setDouble("volume", 100);
+    if (rc >= 0) {
+        volume_ = 100;
+        rc = mpv_->setFlag("mute", false);
+    }
+    if (rc < 0) {
+        log::warn("player", "cannot reset volume: {}", mpv_error_string(rc));
+        ui::toast("Unable to adjust playback volume", ui::ToastKind::Warning);
+        return;
+    }
+    adjustmentValue_ = PlaybackSwipe::volumeFraction(100);
+    adjustingBrightness_ = false;
+    adjustmentLabel_ = "100%";
+    adjustmentTimer_ = 1.5;
+}
+
+void PlayerScreen::drawAdjustment(ui::Renderer& r) {
+    if (adjustmentTimer_ <= 0 || modalOpen_) return;
+    const Rect box = adjustmentRect();
     const float fade = std::clamp(static_cast<float>(adjustmentTimer_) / 0.25f, 0.0f, 1.0f);
-    r.pushAlpha(fade);
-    r.fillRoundRect(box, w * 0.5f, Color::black(0.72f));
-    if (const auto* l = adjustmentText_.get(adjustmentLabel_, theme::type::subhead))
-        r.drawText(*l, {box.center().x - l->width * 0.5f, box.y + 18}, theme::color::textPrimary);
-    const Rect track{box.center().x - 4, box.y + 54, 8, box.h - 54 - 66};
     const float value = std::clamp(adjustmentValue_, 0.0f, 1.0f);
+    const float unityValue = PlaybackSwipe::volumeFraction(100);
+    // Above 100% mpv amplifies the audio: that part of the level, and the label, use the warning colour.
+    const bool boosted = !adjustingBrightness_ && value > unityValue + 0.001f;
+    r.pushAlpha(fade);
+    r.fillRoundRect(box, box.w * 0.5f, Color::black(0.72f));
+    if (const auto* l = adjustmentText_.get(adjustmentLabel_, theme::type::subhead))
+        r.drawText(*l, {box.center().x - l->width * 0.5f, box.y + 18},
+                   boosted ? theme::color::warning : theme::color::textPrimary);
+    const Rect track{box.center().x - 4, box.y + 54, 8, box.h - 54 - 66};
     r.fillRoundRect(track, 4, theme::color::progressTrack);
-    r.fillRoundRect({track.x, track.bottom() - track.h * value, track.w, track.h * value}, 4, theme::accentGradient);
+    if (boosted) {
+        const float unity = track.bottom() - track.h * unityValue;
+        const float top = track.bottom() - track.h * value;
+        r.fillRoundRect({track.x, top, track.w, unity - top + 4}, 4, theme::color::warning);
+        r.fillRoundRect({track.x, unity, track.w, track.bottom() - unity}, 4, theme::accentGradient);
+    } else {
+        r.fillRoundRect({track.x, track.bottom() - track.h * value, track.w, track.h * value}, 4, theme::accentGradient);
+    }
     if (!adjustingBrightness_) {
-        // Marks 100%; above it mpv amplifies the audio.
-        const float unity = track.bottom() - track.h * PlaybackSwipe::volumeFraction(100);
-        r.fillRoundRect({track.x - 6, unity - 1, track.w + 12, 2}, 1, Color::white(0.7f));
+        const float unity = track.bottom() - track.h * unityValue;
+        r.fillRoundRect({track.x - 6, unity - 1, track.w + 12, 2}, 1, boosted ? theme::color::warning : Color::white(0.7f));
     }
     const Rect icon{box.center().x - 14, box.bottom() - 48, 28, 28};
     if (adjustingBrightness_) {
@@ -728,8 +772,8 @@ void PlayerScreen::drawSkipButton(ui::Renderer& r) {
 void PlayerScreen::drawUpNext(ui::Renderer& r) {
     const float a = std::clamp(upNextAppear_.value(), 0.0f, 1.0f);
     if (a <= 0.01f || !next_) return;
-    // Tall enough that a two-line title clears the countdown line and the button hints.
-    const float w = 420, h = 132;
+    // Tall enough that a two-line title clears the countdown line and the buttons.
+    const float w = 420, h = 144;
     const float y = (osdVisible() ? 470.0f : 560.0f) + (1 - a) * 30;
     const Rect card{theme::layout::screenWidth - kMargin - w, y, w, h};
     r.pushAlpha(a);
@@ -761,7 +805,7 @@ void PlayerScreen::drawUpNext(ui::Renderer& r) {
         r.drawText(*l, {tx, card.y + 32}, theme::color::textPrimary);
 
     const bool autoplay = autoplayNext_ && upNextTimer_.remaining() > 0;
-    const float by = card.bottom() - 30;
+    const float by = card.bottom() - 38;
     if (autoplay) {
         if (const int64_t k = static_cast<int64_t>(std::ceil(upNextTimer_.remaining())); k != countdownKey_) {
             countdownKey_ = k;
@@ -773,22 +817,25 @@ void PlayerScreen::drawUpNext(ui::Renderer& r) {
         r.fillRoundRect({tx, by - 4, tw, 3}, 1.5f, theme::color::progressTrack);
         r.fillRoundRect({tx, by - 4, tw * p, 3}, 1.5f, theme::accentGradient);
     }
-    float hx = tx;
-    auto hint = [&](ui::Key key, CachedText& text, std::string_view label) {
-        ui::drawButtonGlyph(r, key, {hx + 9, by + 12}, 18, Color::white(0.9f), Color::black());
-        hx += 18 + 6;
-        if (const auto* l = text.get(label, theme::type::footnote)) {
-            r.drawText(*l, {hx, by + 12 - l->height * 0.5f}, theme::color::textSecondary);
-            hx += l->width + 16;
-        }
+    // "Play now" / "Cancel": focused with the D-pad (A presses), or tapped. B always cancels.
+    const float bh = 28, bgap = 8;
+    const float bw = (tw - bgap) * 0.5f;
+    const Rect playBox{tx, by + 4, bw, bh};
+    const Rect cancelBox{tx + bw + bgap, by + 4, bw, bh};
+    auto button = [&](const Rect& box, CachedText& text, std::string_view label, bool focused) {
+        r.fillRoundRect(box, theme::radius::pill,
+                        focused ? theme::color::buttonSecondaryFocused : theme::color::buttonSecondary);
+        if (const auto* l = text.get(label, theme::type::footnote))
+            r.drawText(*l, {box.center().x - l->width * 0.5f, box.center().y - l->height * 0.5f},
+                       focused ? theme::color::textOnLight : theme::color::textPrimary);
     };
-    hint(ui::Key::A, upNextPlay_, "Play now");
-    const float hideX = hx;
-    hint(ui::Key::B, upNextHide_, "Hide");
+    button(playBox, upNextPlay_, "Play now", upNextFocus_ == 0);
+    button(cancelBox, upNextCancel_, "Cancel", upNextFocus_ == 1);
     r.popAlpha();
     if (upNextVisible_) {
         hits_.push_back({card, HitAction::UpNext});
-        hits_.push_back({{hideX - 4, by - 3, card.right() - hideX, 34}, HitAction::DismissUpNext});
+        hits_.push_back({playBox.expanded(4), HitAction::UpNext});
+        hits_.push_back({cancelBox.expanded(4), HitAction::DismissUpNext});
     }
 }
 

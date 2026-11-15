@@ -8,7 +8,7 @@ Umbrella include: `#include "downloads/downloads.hpp"`. Everything goes through 
 
 | File | Contents |
 | --- | --- |
-| `types.hpp` | `State` (+ `stateName`, `canTransition`), `DownloadInfo`, `LocalSubtitle`, `GroupSummary`, `StorageStats`, `OfflineItem/Season/Series/Library`, `Event`/`EventType`, `EnqueueResult`, `makeKey()` |
+| `types.hpp` | `State` (+ `stateName`, `canTransition`), `DownloadInfo`, `LocalSubtitle`, `GroupSummary`, `StorageStats`, `OfflineItem/Season/Series/Library`, `Event`/`EventType`, `EnqueueResult`, `ThroughputMeter`, `makeKey()` |
 | `manager.hpp` | `DownloadManager` (queue control, settings, snapshots, offline library, local progress, observers) and the RAII `Subscription` |
 | `downloads.hpp` | umbrella include + `selfTest()` |
 | `manager.cpp` | queue state, persistence, threads, events, enqueue |
@@ -93,6 +93,7 @@ sub_ = downloads::Subscription([this](const downloads::Event& e) {
 | Delete a download (any state) | `dm.remove(key)`. `dm.removeGroup(serverId, seriesOrSeasonId)` deletes a whole series or season. |
 | Delete watched | `dm.removeWatched()` returns how many were deleted |
 | Retry | `dm.retry(key)`, `dm.retryFailed()` |
+| Overall speed / time left | `ThroughputMeter::update(dm.pending(), dt)` on each event, then `bytesPerSecond()` (summed, smoothed over ~3 s) and `etaSeconds()` (bytes left of Queued + active downloads, -1 if unknown) |
 | Storage bar | `dm.storage()` → `downloadedBytes`, `partialBytes`, `reservedBytes` (still to download), `freeBytes`, `totalBytes` |
 | Settings | `setConcurrency(1..4)`, `setAutoResume(bool)`, `setKeepScreenOn(bool)` (main thread, stored in settings) |
 
@@ -273,6 +274,7 @@ sdmc:/switch/karafin/downloads/
 * the `queue.json` round trip, including restore rules with and without auto-resume and invalid documents
 * the extension, Content-Range, backoff, ETag, played-threshold and UserData patch helpers
 * the throttle bucket math
+* `ThroughputMeter` (summed speed, smoothing between transfers, ETA, idle / waiting states)
 * the `.part` writer (buffering, resume offset, rebase, truncate) in `cacheDir()/dl-selftest`
 
 Failures are logged under the `downloads-test` tag.

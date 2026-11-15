@@ -37,6 +37,7 @@ private:
 
     jellyfin::BaseItem item_;
     std::string imageUrl_;
+    std::string watchedPendingId_;  // item id with a watched request in flight
     CancelToken token_;
     bool loading_ = false;
     float phase_ = 0;

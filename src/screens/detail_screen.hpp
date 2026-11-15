@@ -10,6 +10,7 @@
 #include "screens/widgets/action_button.hpp"
 #include "screens/widgets/chips.hpp"
 #include "screens/widgets/download_button.hpp"
+#include "screens/widgets/overview_text.hpp"
 #include "screens/widgets/row_stack.hpp"
 #include "screens/widgets/skeleton.hpp"
 #include "screens/widgets/status_view.hpp"
@@ -57,6 +58,8 @@ private:
     jellyfin::BaseItem item_;
     bool loaded_ = false;
     bool shownOnce_ = false;
+    bool favPending_ = false;
+    bool watchedPending_ = false;
 
     ui::Backdrop* backdrop_ = nullptr;
     ui::ScrollView* page_ = nullptr;
@@ -67,7 +70,7 @@ private:
     ChipRow* chips_ = nullptr;
     ChipRow* media_ = nullptr;
     ui::Label* genres_ = nullptr;
-    ui::Label* overview_ = nullptr;
+    OverviewText* overview_ = nullptr;
     ui::Label* credits_ = nullptr;
     ui::Box* buttons_ = nullptr;
     ActionButton* play_ = nullptr;

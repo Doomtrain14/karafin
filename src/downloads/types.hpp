@@ -123,6 +123,24 @@ struct StorageStats {
     int pendingCount = 0;
 };
 
+// Overall speed and time left of the queue (Downloads tab header). Feed it pending() snapshots
+// with the time since the previous update. The summed speed is smoothed over about 3 s so it
+// doesn't drop to zero while the next episode is being probed.
+class ThroughputMeter {
+public:
+    void update(const std::vector<DownloadInfo>& downloads, double dtSeconds);
+    bool active() const { return active_; }           // anything Probing / Downloading / WaitingForNetwork
+    double bytesPerSecond() const { return speed_; }  // 0 unless something is Probing / Downloading
+    // Bytes left of Queued and active downloads over the smoothed speed; -1 while idle, before
+    // any speed is known or when one of them has no size yet.
+    double etaSeconds() const { return eta_; }
+
+private:
+    bool active_ = false;
+    double speed_ = 0;
+    double eta_ = -1;
+};
+
 // --- Offline library (completed downloads) --------------------------------------------------
 
 struct OfflineItem {

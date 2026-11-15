@@ -10,6 +10,7 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <switch.h>
+#include <mbedtls/sha256.h>
 
 #include "core/log.hpp"
 
@@ -22,8 +23,10 @@ bool g_romfs = false;
 bool g_sockets = false;
 bool g_nifm = false;
 bool g_psm = false;
+bool g_account = false;
 int g_nxlinkSock = -1;
 std::string g_firmware;
+std::string g_switchProfileId;
 
 int g_boostCount = 0;
 int g_awakeCount = 0;
@@ -48,6 +51,26 @@ u32 g_appliedCpuHz = 0;
 u32 g_appliedGpuHz = 0;
 bool g_fastLoadFallback = false;
 std::chrono::steady_clock::time_point g_nextClockCheck{};
+
+std::string selectedSwitchProfileId() {
+    if (!g_account) return {};
+    AccountUid uid{};
+    if (R_FAILED(accountGetPreselectedUser(&uid)) || !accountUidIsValid(&uid)) {
+        uid = {};
+        if (R_FAILED(accountGetLastOpenedUser(&uid)) || !accountUidIsValid(&uid)) return {};
+    }
+
+    unsigned char digest[32]{};
+    if (mbedtls_sha256(reinterpret_cast<const unsigned char*>(&uid), sizeof(uid), digest, 0) != 0) return {};
+    constexpr char digits[] = "0123456789abcdef";
+    std::string id;
+    id.reserve(sizeof(digest) * 2);
+    for (unsigned char byte : digest) {
+        id.push_back(digits[byte >> 4]);
+        id.push_back(digits[byte & 0x0F]);
+    }
+    return id;
+}
 
 bool ensureClkrstLocked() {
     if (g_clkrstReady) return true;
@@ -244,6 +267,8 @@ void init() {
 
     g_nifm = R_SUCCEEDED(nifmInitialize(NifmServiceType_User));
     g_psm = R_SUCCEEDED(psmInitialize());
+    g_account = R_SUCCEEDED(accountInitialize(AccountServiceType_Application));
+    if (g_account) g_switchProfileId = selectedSwitchProfileId();
 
     if (R_SUCCEEDED(setsysInitialize())) {
         SetSysFirmwareVersion fw{};
@@ -270,7 +295,9 @@ void shutdown() {
     g_screenOnCount = 0;
     if (g_nifm) nifmExit();
     if (g_psm) psmExit();
-    g_psm = false;
+    if (g_account) accountExit();
+    g_psm = g_account = false;
+    g_switchProfileId.clear();
     log::setStdoutMirror(false);
     if (g_nxlinkSock >= 0) {
         close(g_nxlinkSock);
@@ -302,6 +329,10 @@ bool isDocked() { return appletGetOperationMode() == AppletOperationMode_Console
 bool hasFocus() { return appletGetFocusState() == AppletFocusState_InFocus; }
 bool nxlinkConnected() { return g_nxlinkSock >= 0; }
 bool romfsMounted() { return g_romfs; }
+std::string switchProfileId() {
+    std::lock_guard lock(g_mutex);
+    return g_switchProfileId;
+}
 
 std::optional<BatteryState> battery() {
     if (!g_psm) return std::nullopt;
@@ -314,11 +345,27 @@ std::optional<BatteryState> battery() {
 
 bool networkConnected() {
     if (!g_nifm) return false;
+    // Polled by download workers and the player's recovery loop; avoid an IPC round trip each time.
+    static std::mutex cacheMutex;
+    static std::chrono::steady_clock::time_point nextCheck{};
+    static bool cached = false;
+    std::lock_guard lock(cacheMutex);
+    const auto now = std::chrono::steady_clock::now();
+    if (now < nextCheck) return cached;
+    nextCheck = now + std::chrono::seconds(1);
+
     NifmInternetConnectionType type{};
     u32 strength = 0;
     NifmInternetConnectionStatus status{};
-    if (R_FAILED(nifmGetInternetConnectionStatus(&type, &strength, &status))) return false;
-    return status == NifmInternetConnectionStatus_Connected;
+    if (R_SUCCEEDED(nifmGetInternetConnectionStatus(&type, &strength, &status)) &&
+        status == NifmInternetConnectionStatus_Connected) {
+        return cached = true;
+    }
+    // nifm's internet test fails on LAN-only networks and with DNS blocking (90DNS), while a
+    // local Jellyfin server is still reachable. An assigned IP means the link itself is up.
+    u32 ip = 0;
+    cached = R_SUCCEEDED(nifmGetCurrentIpAddress(&ip)) && ip != 0;
+    return cached;
 }
 
 uint64_t totalMemory() {

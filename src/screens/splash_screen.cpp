@@ -11,6 +11,7 @@
 #include "gfx/image.hpp"
 #include "gfx/text.hpp"
 #include "screens/common.hpp"
+#include "screens/library_lock.hpp"
 #include "screens/session.hpp"
 #include "ui/root.hpp"
 #include "ui/widgets/dialog.hpp"
@@ -63,13 +64,15 @@ void SplashScreen::restore() {
     problem_->hide();
     setShowsHintBar(false);
     lift_.springTo(0.0f, theme::motion::gentle);
-    auto last = jf::AccountStore::instance().lastSession();
+    auto last = jf::AccountStore::instance().lastSession(platform::switchProfileId());
     if (!last) {
         outcome_ = Outcome::Servers;
         maybeNavigate();
         return;
     }
     serverId_ = last->server.id;
+    userId_ = last->user.id;
+    userName_ = last->user.name;
     serverName_ = last->server.name.empty() ? last->server.url : last->server.name;
     statusText_->setText("Connecting to " + serverName_ + "...");
     spinner_->alpha.tweenTo(1.0f, 0.4f, ease::outCubic);
@@ -100,7 +103,14 @@ void SplashScreen::maybeNavigate() {
     switch (outcome_) {
         case Outcome::Home:
             navigated_ = true;
-            enterApp(client_);
+            if (LibraryLock::profileNeedsCode(serverId_, userId_)) {
+                spinner_->alpha.tweenTo(0.0f, 0.2f);
+                statusText_->alpha.tweenTo(0.0f, 0.2f);
+                LibraryLock::instance().askProfileCode(serverId_, userId_, userName_, [client = client_] { enterApp(client); },
+                                                       [serverId = serverId_] { goToLogin(serverId); });
+            } else {
+                enterApp(client_);
+            }
             break;
         case Outcome::Login:
             navigated_ = true;

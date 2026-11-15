@@ -1,5 +1,8 @@
 #include "downloads/types.hpp"
 
+#include <algorithm>
+#include <cmath>
+
 namespace karafin::downloads {
 
 std::string_view stateName(State s) {
@@ -44,6 +47,32 @@ bool canTransition(State from, State to) {
 }
 
 bool isActive(State s) { return s == State::Probing || s == State::Downloading || s == State::WaitingForNetwork; }
+
+void ThroughputMeter::update(const std::vector<DownloadInfo>& downloads, double dtSeconds) {
+    constexpr double kSmoothingSeconds = 3.0;
+    double sample = 0;
+    uint64_t remaining = 0;
+    bool sizesKnown = true;
+    bool transferring = false;
+    active_ = false;
+    for (const DownloadInfo& d : downloads) {
+        if (d.state != State::Queued && !isActive(d.state)) continue;
+        active_ = active_ || isActive(d.state);
+        transferring = transferring || d.state == State::Downloading || d.state == State::Probing;
+        if (d.state == State::Downloading) sample += d.bytesPerSecond;
+        if (d.bytesTotal == 0) sizesKnown = false;
+        else if (d.bytesTotal > d.bytesDone) remaining += d.bytesTotal - d.bytesDone;
+    }
+    if (!transferring) {
+        // Idle, or every transfer is waiting for the network: no meaningful speed.
+        speed_ = 0;
+        eta_ = -1;
+        return;
+    }
+    if (speed_ <= 0) speed_ = sample;
+    else speed_ += (sample - speed_) * (1.0 - std::exp(-std::max(dtSeconds, 0.0) / kSmoothingSeconds));
+    eta_ = speed_ > 1 && sizesKnown ? static_cast<double>(remaining) / speed_ : -1;
+}
 
 std::string makeKey(std::string_view serverId, std::string_view itemId) {
     std::string k;

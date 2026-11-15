@@ -10,6 +10,7 @@
 #include "screens/widgets/action_button.hpp"
 #include "screens/widgets/chips.hpp"
 #include "screens/widgets/download_button.hpp"
+#include "screens/widgets/overview_text.hpp"
 #include "screens/widgets/skeleton.hpp"
 #include "screens/widgets/status_view.hpp"
 #include "ui/anim.hpp"
@@ -73,6 +74,9 @@ private:
     bool seasonsReady_ = false;
     bool nextUpReady_ = false;
     bool shownOnce_ = false;
+    bool favPending_ = false;
+    bool watchedPending_ = false;
+    bool seasonWatchedPending_ = false;
 
     ui::Backdrop* backdrop_ = nullptr;
     ui::ScrollView* page_ = nullptr;
@@ -81,7 +85,7 @@ private:
     ui::Label* title_ = nullptr;
     ChipRow* chips_ = nullptr;
     ui::Label* genres_ = nullptr;
-    ui::Label* overview_ = nullptr;
+    OverviewText* overview_ = nullptr;
     ActionButton* play_ = nullptr;
     DownloadButton* download_ = nullptr;
     ActionButton* fav_ = nullptr;

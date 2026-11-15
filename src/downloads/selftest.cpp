@@ -1,5 +1,7 @@
+#include <cmath>
 #include <format>
 #include <string>
+#include <vector>
 
 #include "core/fs.hpp"
 #include "core/log.hpp"
@@ -252,6 +254,38 @@ void testHelpers(Checker& c) {
     c.check(BandwidthLimiter::take(tokens, 1000, 10.0, 100) == 0 && tokens <= 250.0, "limiter burst cap");
 }
 
+void testThroughput(Checker& c) {
+    auto info = [](State s, uint64_t done, uint64_t total, double speed) {
+        DownloadInfo i;
+        i.state = s;
+        i.bytesDone = done;
+        i.bytesTotal = total;
+        i.bytesPerSecond = speed;
+        return i;
+    };
+    ThroughputMeter m;
+    m.update({info(State::Paused, 0, 1000, 0), info(State::Failed, 0, 1000, 0)}, 0.25);
+    c.check(!m.active() && m.bytesPerSecond() == 0 && m.etaSeconds() == -1, "throughput idle");
+
+    // Two transfers plus a queued item; paused bytes don't count.
+    std::vector<DownloadInfo> list = {info(State::Downloading, 400, 1000, 100), info(State::Downloading, 0, 600, 50),
+                                      info(State::Queued, 0, 500, 0), info(State::Paused, 0, 9000, 0)};
+    m.update(list, 0.25);
+    c.check(m.active() && m.bytesPerSecond() == 150, "throughput sums speeds");
+    c.check(std::abs(m.etaSeconds() - 1700.0 / 150.0) < 1e-9, "throughput eta over queued + active");
+
+    // Between episodes (probing, no speed) the rate decays instead of dropping to zero.
+    list = {info(State::Probing, 0, 600, 0), info(State::Queued, 0, 500, 0)};
+    m.update(list, 1.0);
+    c.check(m.bytesPerSecond() > 100 && m.bytesPerSecond() < 150, "throughput smoothed");
+    list[1].bytesTotal = 0;
+    m.update(list, 0.25);
+    c.check(m.etaSeconds() == -1, "throughput eta unknown without sizes");
+
+    m.update({info(State::WaitingForNetwork, 0, 600, 0)}, 0.25);
+    c.check(m.active() && m.bytesPerSecond() == 0 && m.etaSeconds() == -1, "throughput waiting for network");
+}
+
 void testPartWriter(Checker& c) {
     const std::string dir = paths::cacheDir() + "/dl-selftest";
     if (!fs::ensureDir(dir)) {
@@ -295,6 +329,7 @@ bool selfTest(std::string* summary) {
     testQueueOps(c);
     testPersistence(c);
     testHelpers(c);
+    testThroughput(c);
     testPartWriter(c);
     const std::string line = std::format("downloads self-test: {} passed, {} failed", c.passed, c.failed);
     if (c.failed == 0) {

@@ -2,12 +2,14 @@
 
 #include <memory>
 
+#include "gfx/icons.hpp"
 #include "jellyfin/client.hpp"
 #include "screens/common.hpp"
 #include "screens/library_lock.hpp"
 #include "screens/library_screen.hpp"
 #include "screens/widgets/item_card.hpp"
 #include "ui/root.hpp"
+#include "ui/theme.hpp"
 
 namespace karafin::screens {
 
@@ -20,6 +22,40 @@ constexpr const char* kFavoritesId = "karafin:favorites";
 bool listed(const jf::BaseItem& view) {
     const std::string& c = view.collectionType;
     return c != "livetv" && c != "music" && c != "books" && c != "photos";
+}
+
+// Lock symbol on the top-left of a locked library's art: accent while locked, dimmed while it is
+// unlocked.
+class LockMark : public View {
+public:
+    LockMark() { setVisible(false); }
+
+    void setBlocked(bool blocked) { blocked_ = blocked; }
+
+    void update(float dt) override {
+        if (auto* card = dynamic_cast<PosterCard*>(parent())) {
+            const Rect art = card->artRect();
+            setFrame({art.x + 8, art.y + 8, 30, 30});
+        }
+        View::update(dt);
+    }
+
+    void draw(Renderer& r) override {
+        const Vec2 c{width() * 0.5f, height() * 0.5f};
+        r.drawShadow({0, 0, 30, 30}, 15, 8, Color::black(0.4f), {0, 2});
+        r.fillCircle(c, 15, blocked_ ? theme::color::accent : Color::black(0.55f));
+        gfx::drawIcon(r, gfx::Icon::Lock, {c.x - 8, c.y - 8, 16, 16},
+                      blocked_ ? Color::white() : theme::color::textSecondary, 1.3f);
+    }
+
+private:
+    bool blocked_ = false;
+};
+
+LockMark* lockMark(View& card) {
+    for (const auto& child : card.children())
+        if (auto* mark = dynamic_cast<LockMark*>(child.get())) return mark;
+    return nullptr;
 }
 }  // namespace
 
@@ -35,6 +71,7 @@ LibrariesSection::LibrariesSection() {
     grid_->createCell = [] {
         auto card = std::make_unique<ItemCard>(CardShape::Wide);
         card->setPreferredSize(theme::card::wideWidth * 1.2f, -1);
+        card->add<LockMark>();
         return card;
     };
     grid_->bindCell = [this](View& v, size_t i) {
@@ -52,6 +89,7 @@ LibrariesSection::LibrariesSection() {
                 nav().push(std::make_unique<LibraryScreen>(std::move(spec)));
             };
             card.onKey = nullptr;
+            if (LockMark* mark = lockMark(card)) mark->setVisible(false);
         } else {
             bindLibrary(card, lib);
         }
@@ -104,6 +142,10 @@ void LibrariesSection::bindLibrary(ItemCard& card, const jf::BaseItem& lib) {
     const bool blocked = locked && lock.blocks(lib.id);
     card.setSubtitle(!locked ? std::string() : blocked ? "Locked" : "Unlocked until you lock it again");
     card.setBadge(blocked ? "Locked" : std::string());
+    if (LockMark* mark = lockMark(card)) {
+        mark->setVisible(locked);
+        mark->setBlocked(blocked);
+    }
     card.onOpen = nullptr;
     const bool admin = isAdmin();
     std::vector<Hint> hints{{Key::X, locked ? "Lock options" : "Lock"}};

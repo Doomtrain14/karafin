@@ -42,7 +42,9 @@ offline viewing with pause and resume.
 
 - **Servers and accounts**
   - LAN server discovery, or enter an address.
-  - Several servers and users, remembered between launches.
+  - Several servers and users, remembered between launches. Each Switch profile remembers its
+    own last Jellyfin sign-in; the first time a Switch profile is used, it starts with the
+    previously used account.
   - Sign in with a password (system keyboard) or Quick Connect.
 - **Browsing**
   - Home: a hero carousel, Continue Watching, Next Up, Recently Added per library, and your
@@ -51,11 +53,15 @@ offline viewing with pause and resume.
   - Movie, series, season and episode pages with cast, similar titles, and audio, subtitle and
     version pickers.
   - Search, favorites, and marking items watched or unwatched.
+  - Long summaries open in full with A (or a tap) on detail and series pages.
+  - Profile code: a profile can ask for its D-pad code before it opens, from the account
+    picker or at startup. Profiles with a code show a lock.
   - Library lock: press X on a library in the Libraries tab to lock it with a D-pad code of 4 or
     6 steps. A locked library needs the code to open and its titles are left out of Home and
     Search. Unlocking opens that one library until you lock it again (X on its tile, the lock
-    button on its page, or **Lock now**) or restart the app. This is a convenience lock inside
-    Karafin, not real security: the server account can still see everything, and Favorites,
+    button on its page, or **Lock now**) or restart the app. Locked titles are also left out of
+    actor, genre and collection grids. The code pad also has touch arrows. This is a convenience
+    lock inside Karafin, not real security: the server account can still see everything, and Favorites,
     Downloads and "More like this" are not filtered.
   - Administrators can ask the server to scan a library for new files: Y on a library tile, the
     refresh button on a library page, or **Scan all libraries** in Settings > Account. Each scan
@@ -92,7 +98,8 @@ offline viewing with pause and resume.
     [SD card format](#sd-card-format-exfat-recommended)).
   - Offline library and playback. Watch progress is synced back to the server when it is
     reachable again.
-  - The download list shows each movie's, show's and episode's summary.
+  - The download list shows each movie's, show's and episode's summary, and the header shows the
+    overall speed and the time left.
   - The console never auto-sleeps while something is downloading. **Keep screen on** (the sun
     button on the Downloads tab, or Settings > Downloads) also keeps the screen from dimming.
 
@@ -167,13 +174,14 @@ The button names below are the Nintendo labels: A is the right face button and B
 | B | Cancel the seek preview, hide the controls, then leave the player |
 | Touch | Tap to show the controls and press on-screen buttons. Drag on the seek bar to scrub |
 | Double-tap the left / right side | Skip back / forward by the **Skip amount** (10 seconds by default). Tap again quickly to skip further. This is the default way to skip; change it with **Skip with** |
-| Swipe up / down on the left | Raise / lower screen brightness (handheld). The original brightness and automatic brightness setting are restored when leaving playback or opening HOME |
-| Swipe up / down on the right | Raise / lower playback volume (0-200%, independent of the console's volume buttons; above 100% boosts quiet audio) |
+| Swipe up / down on the left | Raise / lower screen brightness in handheld mode; when docked it changes the volume instead. The original brightness and automatic brightness setting are restored when leaving playback or opening HOME |
+| Swipe up / down on the right | Raise / lower playback volume (0-200%, independent of the console's volume buttons; above 100% boosts quiet audio and is shown in amber). Double-tap the volume indicator to reset it to 100% |
 
 For series, the next-episode card appears near the end or during credits and counts down
 10 seconds before autoplay. The countdown continues if the episode ends, and waits while
-paused, buffering, seeking, in a menu, or away from the app. Press A or tap the card to play
-immediately; press B or tap **Hide** to cancel autoplay for this episode. Turn off **Autoplay
+paused, buffering, seeking, in a menu, or away from the app. The card has **Play now** and
+**Cancel** buttons: pick one with the D-pad and press A, or tap it. B also cancels autoplay for
+this episode. Press ↑ to leave the buttons and seek with ← / →, and ↓ to return to them. Turn off **Autoplay
 next episode** in Settings > Playback to keep the card manual-only.
 
 The screen stays on and the console doesn't sleep while a video plays, loads or buffers. When
@@ -190,8 +198,11 @@ Settings are grouped into Account, Playback, Subtitles, Downloads, Interface and
 useful ones:
 
 - **Account**
-  - Library lock: set or change the D-pad code, **Lock now** (locks every unlocked library
-    again), or turn the lock off (removes the code and every lock).
+  - Lock code for the signed-in profile: set or change the D-pad code, **Lock now** (locks every
+    unlocked library again), **Ask for code to open this profile**, or turn the code off
+    (removes it, every library lock and the profile code). Each profile on each server has its
+    own code and locks. After 5 wrong tries the code pad pauses for 30 seconds, longer after
+    more failures.
   - **Scan all libraries** (administrators only).
 - **Playback**
   - Max streaming bitrate and max audio channels. These decide when the server has to transcode.

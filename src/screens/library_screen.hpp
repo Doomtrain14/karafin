@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <set>
@@ -31,8 +32,13 @@ struct LibrarySpec {
     std::string filters;         // fixed filters, e.g. "IsFavorite"
 };
 
+class LibraryFilterChip;
+
 // Virtualized poster grid over /Items with sparse paging (pages load as cells come into view),
-// sort / filter side sheets, genre filter, A-Z jump and an item count.
+// sort / filter side sheets, genre filter (shown as a chip while active), A-Z jump and an item
+// count. While LibraryLock hides titles, grids that can mix libraries (people, favorites,
+// collections, folders) first list the matching ids, drop the hidden ones and then load pages by
+// id, so counts, paging and the A-Z jump only see what is shown.
 class LibraryScreen : public ui::Screen {
 public:
     explicit LibraryScreen(LibrarySpec spec);
@@ -51,6 +57,10 @@ private:
     static constexpr float kPageRetryMax = 30.0f;
 
     void reload();
+    void loadIndex();
+    void showResults();
+    bool needsLockFilter() const;
+    size_t indexForLetter(const std::string& letter) const;
     void refreshVisiblePages();
     void ensurePage(size_t page, bool force = false);
     void pageFailed(size_t page, const jellyfin::ApiError& error);
@@ -69,6 +79,7 @@ private:
     LibrarySpec spec_;
     ui::Label* title_ = nullptr;
     ui::Label* subtitle_ = nullptr;
+    LibraryFilterChip* chip_ = nullptr;
     ActionButton* sortBtn_ = nullptr;
     ActionButton* filterBtn_ = nullptr;
     ActionButton* jumpBtn_ = nullptr;
@@ -92,6 +103,12 @@ private:
     CancelToken token_;
     CancelToken genreToken_;
     size_t pendingFocus_ = SIZE_MAX;
+    // Lock filtering: the shown ids in grid order and their lower-cased sort names (A-Z jump).
+    bool lockFiltered_ = false;
+    std::vector<std::string> index_;
+    std::vector<std::string> indexNames_;
+    std::string pendingJump_;  // letter to focus once the re-sorted index is loaded
+    uint64_t lockRevision_ = 0;
 };
 
 }  // namespace karafin::screens

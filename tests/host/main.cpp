@@ -66,6 +66,10 @@ bool playbackControlsTest(std::string& report) {
     ok &= check(swipe.move(1000, 200) == Control::None, "invalid motion cannot resume gesture");
     swipe.begin(200, 360, 1280, 720, false);
     ok &= check(swipe.move(200, 300) == Control::Brightness, "new gesture after cancellation");
+    swipe.begin(200, 360, 1280, 720, false, false);
+    ok &= check(swipe.move(200, 300) == Control::Volume && swipe.left(), "docked left swipe controls volume");
+    swipe.begin(1000, 360, 1280, 720, false, false);
+    ok &= check(swipe.move(1000, 300) == Control::Volume && !swipe.left(), "docked right swipe controls volume");
 
     player::UpNextTimer timer;
     timer.start(true);

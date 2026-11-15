@@ -71,16 +71,20 @@ example, choosing Japanese audio and English subtitles carries over to the follo
 | Y | Audio & Subtitles sheet: audio track, Off, subtitle tracks, Download subtitles, Check for downloaded subtitle |
 | X | Options sheet: speed (0.5x to 2x), subtitle delay (±0.1 s / ±1 s), subtitle size, subtitle position, aspect ratio & zoom, chapters, playback info |
 | − | Toggle the playback info overlay (play method, container, codec, resolution and fps, decoder, bitrates, dropped frames, cache) |
-| ↑ / ↓ | Show the OSD |
+| ↑ / ↓ | Show the OSD. While the up-next card is shown, ↑ moves focus off its buttons (←/→ seek again) and ↓ returns to them |
 | + | App quit confirmation (ui default) |
 | Touch | Tap toggles the OSD and activates the on-screen buttons (back, ±seek, play/pause, next, Audio & Subtitles, Options, Skip, up-next card). Tap or drag on the seek bar to scrub, with a preview |
 | Double-tap left / right third | −/+ `skip_seconds` with a badge on that side; further quick taps add to the jump. The OSD stays as it was before the first tap. Off when `player.skip_input` is `buttons` |
-| Swipe vertically on the left / right | Adjust handheld screen brightness / playback volume, with a vertical level indicator on the same side. Gestures starting on buttons or the seek bar are excluded. Volume ranges 0-200% (mpv `volume-max`; above 100% the audio is amplified, marked on the indicator); brightness 5-100% |
+| Swipe vertically on the left / right | Adjust handheld screen brightness / playback volume, with a vertical level indicator on the same side. Docked (a TV's brightness can't be changed) both sides adjust volume. Gestures starting on buttons or the seek bar are excluded. Volume ranges 0-200% (mpv `volume-max`); brightness 5-100% |
+| Volume indicator | Above 100% mpv amplifies the audio: the level above the 100% tick and the percentage are drawn in the warning colour. While the indicator is shown, a double tap on it resets volume to 100% (it does not count as a double-tap seek, and a new swipe can still start on it) |
 
 Up-next uses a 10-second countdown, including at EOF for short episodes or late seeks. Automatic
 credits skipping also uses this card rather than bypassing the timer. Pausing, buffering,
-seeking, recovery, loss of focus and open menus freeze the timer. A / tapping the card plays now;
-B / tapping Hide cancels autoplay through EOF, unless the viewer seeks back out of the end zone.
+seeking, recovery, loss of focus and open menus freeze the timer. The card has two buttons,
+"Play now" (focused when the card appears) and "Cancel"; D-pad ←/→ moves between them and A
+presses the focused one. Tapping the card or "Play now" plays now. "Cancel" (or B) hides the card
+and cancels autoplay through EOF, where playback ends normally, unless the viewer seeks back out
+of the end zone.
 With `player.autoplay_next=false`, the card has no countdown and only plays on request.
 The timer continues across EOF, where mpv's automatic keep-open pause does not stop it.
 Brightness and automatic-brightness control are restored on HOME, exit, or screen hide.
@@ -138,7 +142,9 @@ so audio track changes and transcode fallbacks show up.
    * Offline: `saveLocalProgress` every 10 s and on pause. On exit it is called with
      `queueServerReport = true`.
 5. **Track changes while transcoding.** Switching to an audio track or image subtitle that isn't
-   in the HLS output restarts the transcode at the current position with the new indices.
+   in the HLS output (or away from a burned-in subtitle) restarts the transcode at the current
+   position with the new indices. A "Restart the stream?" confirmation (Switch / Cancel) comes
+   first; track changes that don't restart the stream apply immediately.
 6. **Remote subtitles.**
    1. Language picker, then `searchRemoteSubtitles`. Results show provider, format, rating,
       downloads, HI, forced, machine-translated, and "Exact match" for hash matches.

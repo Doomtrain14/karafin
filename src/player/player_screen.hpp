@@ -97,6 +97,8 @@ private:
     void onReachedEnd();
     void retryWithTranscode(const std::string& reason);
     void restartStream(int audioIndex, int subtitleIndex);
+    // Asks before a track change restarts the transcoded stream; `restart` runs on confirmation.
+    void confirmStreamRestart(bool audio, std::function<void()> restart);
     // Network loss mid-stream (sleep/wake, Wi-Fi drop): wait for the network, then reload at
     // the last position instead of failing.
     bool beginRecovery(const std::string& reason);
@@ -177,6 +179,8 @@ private:
     void drawError(ui::Renderer& r);
     void drawInfoOverlay(ui::Renderer& r);
     void drawAdjustment(ui::Renderer& r);
+    ui::Rect adjustmentRect() const;
+    void resetVolume();
     void refreshInfo();
     void refreshTags();
     void runHit(HitAction action);
@@ -312,6 +316,8 @@ private:
     float swipeInitial_ = 0;
     float adjustmentValue_ = 0;
     bool adjustingBrightness_ = false;
+    bool adjustmentLeft_ = false;  // indicator side (follows the swiped side)
+    double lastIndicatorTapAt_ = -1;
     double adjustmentTimer_ = 0;
     std::string adjustmentLabel_;
     CachedText adjustmentText_;
@@ -364,7 +370,7 @@ private:
     CachedText titleText_, subtitleText_, clockLayout_, endsLayout_, chapterText_;
     CachedText elapsedText_, remainingText_, tracksLabel_, optionsLabel_;
     CachedText previewTime_, previewDelta_, previewTimeLarge_, previewDeltaLarge_, centerLabel_, skipText_;
-    CachedText upNextTitle_, upNextName_, upNextCountdown_, upNextPlay_, upNextHide_;
+    CachedText upNextTitle_, upNextName_, upNextCountdown_, upNextPlay_, upNextCancel_;
     CachedText errorTitleText_, errorBodyText_, errorHint_;
     int64_t elapsedKey_ = -1, remainingKey_ = -1, previewKey_ = INT64_MIN, previewDeltaKey_ = INT64_MIN;
     int64_t countdownKey_ = -1, bufferingKey_ = -1;
@@ -396,6 +402,7 @@ private:
     bool nextLookupDone_ = false;
     bool upNextVisible_ = false;
     bool upNextDismissed_ = false;
+    int upNextFocus_ = 0;  // 0 "Play now", 1 "Cancel", -1 none (the D-pad seeks again)
     UpNextTimer upNextTimer_;
     ui::Animated<float> upNextAppear_{0.0f};
     gfx::ImagePtr nextImage_;
