@@ -288,7 +288,8 @@ and range/resume helpers) run on Linux with GCC 14:
 Source layout and module documentation start at [`src/README-ARCH.md`](src/README-ARCH.md).
 
 The supplied icon artwork is kept in `tools/icon_source.png`. Run `python tools/gen_icon.py`
-(requires Pillow) to regenerate the 256x256 NRO icon and full-size splash image without cropping.
+(requires Pillow) to regenerate the 256x256 NRO icon, the full-size splash image and the README
+icon without cropping.
 
 ## Contributing
 

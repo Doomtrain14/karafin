@@ -43,6 +43,10 @@ SplashScreen::SplashScreen(bool coldStart) : coldStart_(coldStart) {
     logo_.springTo(1.0f, SpringSpec{0.9f, 0.78f});
     gfx::ImageRequest req;
     req.url = paths::romfs("icon.jpg");
+    // Decode at the drawn size: the area-averaged shrink stays smooth, while GL minifying the
+    // full-size texture (no mipmaps) leaves jagged edges.
+    req.width = req.height = static_cast<int>(std::ceil(kIcon * ui::displayScale()));
+    req.fit = gfx::ImageFit::Fill;
     icon_ = gfx::ImageCache::instance().load(req);
 }
 
