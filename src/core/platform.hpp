@@ -23,6 +23,12 @@ bool nxlinkConnected();      // stdout goes to `nxlink -s` on the PC
 bool romfsMounted();
 bool networkConnected();     // nifm reports an internet connection
 
+struct BatteryState {
+    int percent = 0;
+    bool charging = false;
+};
+std::optional<BatteryState> battery();  // nullopt if psm is unavailable
+
 uint64_t totalMemory();      // bytes available to this process
 uint64_t usedMemory();
 std::string firmwareVersion();  // e.g. "22.0.0", or "" if unavailable

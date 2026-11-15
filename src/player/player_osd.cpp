@@ -367,8 +367,10 @@ void PlayerScreen::drawTopBar(ui::Renderer& r, float a) {
     drawTags(r, {textX, lineBottom + 10});
 
     const float right = theme::layout::screenWidth - kMargin;
-    if (const auto* l = clockLayout_.get(clockText_, theme::type::title3))
+    if (const auto* l = clockLayout_.get(clockText_, theme::type::title3)) {
         r.drawText(*l, {right - l->width, 34}, theme::color::textPrimary);
+        battery_.draw(r, right - l->width - 18, 34 + l->height * 0.5f, theme::color::textSecondary);
+    }
     if (!endsText_.empty())
         if (const auto* l = endsLayout_.get(endsText_, theme::type::caption))
             r.drawText(*l, {right - l->width, 62}, theme::color::textSecondary);

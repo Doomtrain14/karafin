@@ -93,9 +93,10 @@ client->logout();                                        // clears the token loc
 * `Client::setUnauthorizedHandler(fn)` runs on the main thread when an authenticated request gets
   a 401, meaning the token was revoked.
 * `Client::setConnectivityHandler(fn(bool offline))` runs on the main thread whenever
-  reachability changes. `isOffline()` reports the last known state. A single failed request
-  doesn't count as an outage: the client goes offline after three failures in a row, or on any
-  failure once nothing has succeeded for 15 seconds.
+  reachability changes. `isOffline()` reports the last known state. A failed request doesn't
+  count as an outage while any transfer (downloads included) has received data in the last 15
+  seconds. Otherwise the client goes offline after three failures in a row, or on any failure
+  once nothing has succeeded for 15 seconds.
 
 ## Browsing
 

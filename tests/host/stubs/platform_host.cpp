@@ -13,6 +13,7 @@ bool hasFocus() { return true; }
 bool nxlinkConnected() { return false; }
 bool romfsMounted() { return false; }
 bool networkConnected() { return true; }
+std::optional<BatteryState> battery() { return std::nullopt; }
 uint64_t totalMemory() { return 0; }
 uint64_t usedMemory() { return 0; }
 std::string firmwareVersion() { return "host"; }

@@ -320,6 +320,8 @@ std::vector<ListItem> SettingsSection::buildItems(Category c) {
             break;
         }
         case Category::Interface: {
+            out.push_back(toggle("Show battery", "ui.show_battery", true, {},
+                                 "Battery percentage in the top bar and player controls"));
             out.push_back(toggle("Navigation sounds", "ui.navigation_sounds", true,
                                  [](bool enabled) { if (!enabled) ui::sound::stop(); },
                                  "Subtle sounds when moving, selecting and going back"));

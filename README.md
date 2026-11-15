@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/icon.jpg" alt="Karafin icon" width="160">
+  <img src="docs/images/icon.png" alt="Karafin icon" width="160">
 </p>
 
 <h1 align="center">Karafin</h1>
@@ -192,6 +192,7 @@ useful ones:
   - Speed limit while streaming, so downloads don't starve playback.
   - Delete watched downloads.
 - **Interface**
+  - Show battery: percentage and charge state in the top bar and player controls (on by default).
   - Navigation sounds (on by default; turn off for silent browsing).
   - Image memory.
   - Verify server certificates.

@@ -24,6 +24,12 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
+std::atomic<int64_t> g_lastReceiveMs{0};
+
+int64_t steadyMs() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now().time_since_epoch()).count();
+}
+
 std::string toLower(std::string_view s) {
     std::string out(s);
     std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -70,6 +76,7 @@ size_t writeCb(char* ptr, size_t size, size_t nmemb, void* ud) {
         t->resp.body.append(ptr, n);
     }
     t->resp.downloadedBytes += n;
+    g_lastReceiveMs.store(steadyMs(), std::memory_order_relaxed);
     return n;
 }
 
@@ -165,7 +172,9 @@ struct Client::Impl {
         CURLM* m = curl_multi_init();
         curl_multi_setopt(m, CURLMOPT_MAX_HOST_CONNECTIONS, 6L);
         curl_multi_setopt(m, CURLMOPT_MAX_TOTAL_CONNECTIONS, 16L);
-        curl_multi_setopt(m, CURLMOPT_MAXCONNECTS, 16L);
+        // Idle pooled connections keep their socket buffers; with downloads running, a large pool
+        // can exhaust the BSD transfer memory and make new connections fail.
+        curl_multi_setopt(m, CURLMOPT_MAXCONNECTS, 8L);
         return m;
     }
 
@@ -594,6 +603,11 @@ void Client::postJson(std::string url, const nlohmann::json& body, Headers heade
 }
 
 size_t Client::activeTransfers() const { return impl_ ? impl_->activeCount.load() : 0; }
+
+int64_t msSinceLastReceive() {
+    const int64_t last = g_lastReceiveMs.load(std::memory_order_relaxed);
+    return last == 0 ? -1 : steadyMs() - last;
+}
 
 // ------------------------------------------------------------------------------------------------
 

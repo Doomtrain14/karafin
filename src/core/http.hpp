@@ -162,6 +162,10 @@ private:
 
 // Percent-encodes everything except RFC 3986 unreserved characters.
 std::string urlEncode(std::string_view s);
+
+// Milliseconds since any transfer (async or perform()) last received body bytes; -1 if none yet.
+// Lets callers tell a slow request apart from a network that has gone quiet.
+int64_t msSinceLastReceive();
 // "a=1&b=x%20y" (values encoded). Empty values are kept.
 std::string buildQuery(const std::vector<std::pair<std::string, std::string>>& params);
 // Joins base and path with exactly one '/'.

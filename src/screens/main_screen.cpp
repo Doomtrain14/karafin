@@ -11,6 +11,7 @@
 #include "screens/search_section.hpp"
 #include "screens/session.hpp"
 #include "screens/settings_section.hpp"
+#include "ui/battery_indicator.hpp"
 #include "ui/root.hpp"
 
 namespace karafin::screens {
@@ -63,6 +64,7 @@ public:
         r.fillCircle({layout::marginX + l->width + 6, 30 + l->firstBaseline - 4}, 4, color::accent);
 
         const float right = width() - layout::marginX;
+        float rightEdge = right;
         if (mode_ == MainMode::Offline) {
             auto t = gfx::text::layout("Offline mode", type::caption);
             const float w = t->width + 46;
@@ -70,9 +72,13 @@ public:
             r.fillRoundRect(pill, 15, color::warning.withAlpha(0.16f));
             gfx::drawIcon(r, gfx::Icon::Wifi, {pill.x + 12, pill.y + 7, 16, 16}, color::warning);
             r.drawText(*t, {pill.x + 34, pill.y + (30 - t->height) * 0.5f}, color::warning);
+            battery_.draw(r, pill.x - 16, pill.center().y, color::textSecondary);
             return;
         }
-        if (userName_.empty()) return;
+        if (userName_.empty()) {
+            battery_.draw(r, rightEdge, 47, color::textSecondary);
+            return;
+        }
         const float av = 34;
         const Rect a{right - av, 30, av, av};
         if (const gfx::Texture* tex = avatar_ ? avatar_->texture() : nullptr) {
@@ -81,14 +87,19 @@ public:
             r.fillCircle(a.center(), av * 0.5f, placeholderColor(userName_).lighter(0.12f));
             gfx::drawIcon(r, gfx::Icon::User, a.inset(8), Color::white(0.85f));
         }
-        auto n = gfx::text::layout(userName_, type::callout, {.maxWidth = 160});
-        r.drawText(*n, {a.x - 10 - n->width, a.y + (av - n->height) * 0.5f}, color::textSecondary);
+        // Narrow enough that the battery indicator never reaches the centred tab bar.
+        auto n = gfx::text::layout(userName_, type::callout, {.maxWidth = 120});
+        const float nameX = a.x - 10 - n->width;
+        r.drawText(*n, {nameX, a.y + (av - n->height) * 0.5f}, color::textSecondary);
+        rightEdge = nameX - 20;
+        battery_.draw(r, rightEdge, a.center().y, color::textSecondary);
     }
 
 private:
     MainMode mode_;
     std::string userName_;
     gfx::ImagePtr avatar_;
+    BatteryIndicator battery_;
 };
 
 MainScreen::MainScreen(MainMode mode, Section initial) : mode_(mode) {

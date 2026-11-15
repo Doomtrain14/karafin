@@ -21,6 +21,7 @@
 #include "player/swipe.hpp"
 #include "player/tracks.hpp"
 #include "player/up_next.hpp"
+#include "ui/battery_indicator.hpp"
 #include "ui/modal.hpp"
 #include "ui/screen.hpp"
 
@@ -333,6 +334,7 @@ private:
     double spinnerPhase_ = 0;
     double busyFor_ = 0;
     std::string clockText_;
+    ui::BatteryIndicator battery_;
     std::string endsText_;
     double clockNext_ = 0;
 

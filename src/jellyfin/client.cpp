@@ -224,12 +224,19 @@ void Client::noteReachable(bool reachable) {
     if (reachable) {
         failStreak_.store(0);
         lastReachableMs_.store(now);
-    } else {
-        // One slow request (e.g. while downloads saturate the link) is not an outage: stay
-        // online until failures repeat or the server has been silent for a while.
+    } else if (!offline_.load()) {
         const int streak = failStreak_.fetch_add(1) + 1;
+        // Bytes arriving on any transfer (downloads come from this same server) mean the link is
+        // up and this request was just slow, e.g. queued behind saturating downloads.
+        const int64_t quiet = http::msSinceLastReceive();
+        if (quiet >= 0 && quiet < kOfflineGraceMs) {
+            log::info("jellyfin", "request failed while data is still flowing; staying online");
+            return;
+        }
+        // With nothing flowing, go offline after repeated failures or once nothing has succeeded
+        // for a while.
         const int64_t last = lastReachableMs_.load();
-        if (!offline_.load() && streak < kOfflineFailureStreak && last != 0 && now - last < kOfflineGraceMs) return;
+        if (streak < kOfflineFailureStreak && last != 0 && now - last < kOfflineGraceMs) return;
     }
     const bool wasOffline = offline_.exchange(!reachable);
     if (wasOffline == !reachable) return;

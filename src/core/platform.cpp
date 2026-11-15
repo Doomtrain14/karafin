@@ -21,6 +21,7 @@ bool g_initialized = false;
 bool g_romfs = false;
 bool g_sockets = false;
 bool g_nifm = false;
+bool g_psm = false;
 int g_nxlinkSock = -1;
 std::string g_firmware;
 
@@ -241,6 +242,7 @@ void init() {
     }
 
     g_nifm = R_SUCCEEDED(nifmInitialize(NifmServiceType_User));
+    g_psm = R_SUCCEEDED(psmInitialize());
 
     if (R_SUCCEEDED(setsysInitialize())) {
         SetSysFirmwareVersion fw{};
@@ -267,6 +269,8 @@ void shutdown() {
     }
     g_awakeCount = 0;
     if (g_nifm) nifmExit();
+    if (g_psm) psmExit();
+    g_psm = false;
     log::setStdoutMirror(false);
     if (g_nxlinkSock >= 0) {
         close(g_nxlinkSock);
@@ -298,6 +302,15 @@ bool isDocked() { return appletGetOperationMode() == AppletOperationMode_Console
 bool hasFocus() { return appletGetFocusState() == AppletFocusState_InFocus; }
 bool nxlinkConnected() { return g_nxlinkSock >= 0; }
 bool romfsMounted() { return g_romfs; }
+
+std::optional<BatteryState> battery() {
+    if (!g_psm) return std::nullopt;
+    u32 percent = 0;
+    if (R_FAILED(psmGetBatteryChargePercentage(&percent))) return std::nullopt;
+    PsmChargerType charger = PsmChargerType_Unconnected;
+    psmGetChargerType(&charger);
+    return BatteryState{static_cast<int>(std::min<u32>(percent, 100)), charger != PsmChargerType_Unconnected};
+}
 
 bool networkConnected() {
     if (!g_nifm) return false;
