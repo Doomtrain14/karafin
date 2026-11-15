@@ -199,6 +199,7 @@ void DownloadsSection::build(const dl::OfflineLibrary& library) {
             if (info.runTimeTicks > 0 && info.positionTicks > 0)
                 row->setProgress(static_cast<float>(static_cast<double>(info.positionTicks) / static_cast<double>(info.runTimeTicks)));
             row->setWatched(info.played);
+            row->setSummary(m.item.overview);
             const std::string key = info.key, id = info.itemId, name = info.name;
             const int64_t pos = info.played ? 0 : info.positionTicks, runtime = info.runTimeTicks;
             const bool played = info.played;
@@ -231,6 +232,7 @@ void DownloadsSection::build(const dl::OfflineLibrary& library) {
             auto row = std::make_unique<OfflineItemRow>(s.name.empty() ? "Unknown series" : s.name, sub,
                                                         watched > 0 ? std::format("{} watched", watched) : "", s.posterPath);
             row->setChevron(true);
+            row->setSummary(s.item.overview);
             row->setWatched(watched > 0 && watched == s.episodeCount);
             const std::string serverId = s.serverId, seriesId = s.id, name = s.name;
             row->onActivate = [serverId, seriesId] {

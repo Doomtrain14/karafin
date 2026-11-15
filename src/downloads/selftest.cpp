@@ -123,6 +123,7 @@ void testPersistence(Checker& c) {
     dl.info.seasonId = "season1";
     dl.info.indexNumber = 3;
     dl.info.parentIndexNumber = 1;
+    dl.info.overview = "A summary.";
     dl.info.fileName = "media.mkv";
     dl.eTag = "\"abc\"";
     dl.syncedBytes = 300;
@@ -174,7 +175,8 @@ void testPersistence(Checker& c) {
     const Task& rd = *r.find(makeKey("srv1", "dl"));
     c.check(rd.info.bytesDone == 400 && rd.info.bytesTotal == 1000, "bytes restored");
     c.check(rd.info.bytesPerSecond == 0 && rd.info.etaSeconds == -1, "runtime fields cleared");
-    c.check(rd.info.seriesId == "series1" && rd.info.indexNumber == 3 && rd.info.parentIndexNumber == 1,
+    c.check(rd.info.seriesId == "series1" && rd.info.indexNumber == 3 && rd.info.parentIndexNumber == 1 &&
+                rd.info.overview == "A summary.",
             "episode fields restored");
     c.check(rd.info.fileName == "media.mkv" && rd.eTag == "\"abc\"" && rd.assetsDone && rd.hasPoster,
             "transfer fields restored");

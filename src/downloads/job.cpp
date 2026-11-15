@@ -501,6 +501,7 @@ StepResult JobRunner::bundleAssets(const jellyfin::ClientPtr& client) {
             i.parentIndexNumber = item.parentIndexNumber;
             i.productionYear = item.productionYear;
             if (item.runTimeTicks > 0) i.runTimeTicks = item.runTimeTicks;
+            if (!item.overview.empty()) i.overview = item.overview;
             i.mediaSourceId = msId;
             if (ms && !ms->container.empty()) i.container = ms->container;
             if (i.bytesTotal == 0 && ms && ms->size > 0) i.bytesTotal = static_cast<uint64_t>(ms->size);

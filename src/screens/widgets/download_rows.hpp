@@ -49,6 +49,7 @@ private:
 class OfflineItemRow : public ui::View {
 public:
     static constexpr float kHeight = 96;
+    static constexpr float kHeightWithSummary = 112;
 
     OfflineItemRow(std::string title, std::string subtitle, std::string detail, const std::string& posterPath,
                    bool wideArt = false);
@@ -63,6 +64,8 @@ public:
         subtitle_ = std::move(subtitle);
         detail_ = std::move(detail);
     }
+    // Short overview under the subtitle (up to two lines). Rows with a summary are taller.
+    void setSummary(std::string summary) { summary_ = std::move(summary); }
 
     std::function<void()> onToggleWatched;
     std::function<void()> onDelete;
@@ -81,6 +84,7 @@ private:
     std::string title_;
     std::string subtitle_;
     std::string detail_;
+    std::string summary_;
     gfx::ImagePtr poster_;
     bool wide_;
     float progress_ = -1;

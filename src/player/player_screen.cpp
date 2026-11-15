@@ -880,11 +880,16 @@ void PlayerScreen::onPropertyChange(uint64_t id, const mpv_event_property& prop)
                 }
             }
             break;
-        case kHwdec:
-            hwdec_ = prop.format == MPV_FORMAT_STRING && prop.data && *static_cast<char* const*>(prop.data)
-                         ? *static_cast<char* const*>(prop.data)
-                         : "";
+        case kHwdec: {
+            std::string current = prop.format == MPV_FORMAT_STRING && prop.data && *static_cast<char* const*>(prop.data)
+                                      ? *static_cast<char* const*>(prop.data)
+                                      : "";
+            const bool wasHardware = !hwdec_.empty() && hwdec_ != "no";
+            if (fileLoaded_ && wasHardware && (current.empty() || current == "no"))
+                log::warn("player", "hardware decoding stopped ({}); now decoding in software", hwdec_);
+            hwdec_ = std::move(current);
             break;
+        }
         case kSpeed:
             if (isDouble) speed_ = d;
             break;

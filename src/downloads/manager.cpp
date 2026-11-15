@@ -102,6 +102,7 @@ Task taskFromItem(const jellyfin::ClientPtr& client, const jellyfin::BaseItem& i
     i.productionYear = it.productionYear;
     i.runTimeTicks = it.runTimeTicks;
     i.container = ms && !ms->container.empty() ? ms->container : it.container;
+    i.overview = it.overview;
     const int64_t size = ms && ms->size > 0 ? ms->size : it.size;
     i.bytesTotal = size > 0 ? static_cast<uint64_t>(size) : 0;
     i.positionTicks = it.userData.playbackPositionTicks;

@@ -83,6 +83,7 @@ offline viewing with pause and resume.
     [SD card format](#sd-card-format-exfat-recommended)).
   - Offline library and playback. Watch progress is synced back to the server when it is
     reachable again.
+  - The download list shows each movie's, show's and episode's summary.
 
 ## Install
 
@@ -209,7 +210,8 @@ Karafin decodes video on the Switch's NVDEC hardware through FFmpeg's nvtegra de
 (`hwdec=nvtegra-copy`): decoded frames are copied to memory and uploaded to the GPU. The
 bundled libmpv 0.36 has no zero-copy OpenGL path for nvtegra frames, so this is the only
 hardware path. AV1, and anything NVDEC can't handle, falls back to software decoding. The
-playback info overlay (−) shows which decoder is active.
+playback info overlay (−) shows which decoder is active, and the video's colour space and HDR
+peak. HDR10 video is tone mapped to SDR.
 
 ## SD card format: exFAT recommended
 

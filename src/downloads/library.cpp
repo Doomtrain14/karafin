@@ -112,6 +112,7 @@ OfflineItem DownloadManager::Impl::makeOfflineItem(const Task& t) const {
         b.productionYear = t.info.productionYear;
         b.runTimeTicks = t.info.runTimeTicks;
         b.container = t.info.container;
+        b.overview = t.info.overview;
     }
     jellyfin::UserData& ud = o.item.userData;
     ud.playbackPositionTicks = t.info.positionTicks;

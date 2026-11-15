@@ -150,8 +150,11 @@ bool Mpv::init(const MpvOptions& o, std::string* error) {
     setOption("volume-max", std::to_string(PlaybackSwipe::kMaxVolume));
 
     configureHwdec(mpv_, o.hwdec);
+    // mpv drops to software decoding after 3 failed frames in a row by default. The Tegra
+    // decoder reports frames with damaged macroblocks as failures, and a 4K HEVC stream that
+    // switches to software mid-GOP smears until the next keyframe and can't keep up.
+    setOption("vd-lavc-software-fallback", "60");
     setOption("vd-lavc-threads", "3");
-    setOption("vd-lavc-skiploopfilter", "nonref");
     // Direct rendering needs MPV_RENDER_PARAM_ADVANCED_CONTROL, which we can't enable: the main
     // (render) thread calls synchronous client APIs.
     setOption("vd-lavc-dr", "no");
@@ -165,7 +168,11 @@ bool Mpv::init(const MpvOptions& o, std::string* error) {
     setOption("linear-downscaling", "no");
     setOption("sigmoid-upscaling", "no");
     setOption("deband", "no");
+    // HDR to SDR: no per-frame peak detection (compute shaders are too slow here), so the
+    // static mastering peak is used. Hable keeps mid-tone contrast with that peak, where the
+    // default BT.2390 curve looks flat and washed out.
     setOption("hdr-compute-peak", "no");
+    setOption("tone-mapping", "hable");
     setOption("video-sync", "audio");
     // We render without blocking (BLOCK_FOR_TARGET_TIME=0); a zero offset hands frames over at
     // their display time instead of 50 ms early.

@@ -211,6 +211,7 @@ void OfflineSeriesScreen::build(const dl::OfflineLibrary& library) {
             auto row = std::make_unique<OfflineItemRow>("", "", "", ep.posterPath, true);
             row->setFocusId(ep.info.key);
             OfflineItemRow* raw = row.get();
+            raw->setSummary(ep.item.overview);
             bindRow(raw, ep.info);
             rows_[ep.info.key] = raw;
             box->addChild(std::move(row));

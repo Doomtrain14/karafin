@@ -66,6 +66,7 @@ struct DownloadInfo {
     int productionYear = 0;
     int64_t runTimeTicks = 0;
     std::string container;       // "mkv", "mp4", ...
+    std::string overview;        // item summary (episode summary for episodes)
 
     State state = State::Queued;
     std::string error;           // Failed: user-facing reason. WaitingForNetwork: last error.

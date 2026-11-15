@@ -171,14 +171,18 @@ void PendingDownloadRow::draw(Renderer& r) {
     auto t = gfx::text::layout(title_, type::headline, {.maxWidth = tw});
     auto s = gfx::text::layout(subtitle_, type::caption, {.maxWidth = tw});
     auto st = gfx::text::layout(status_, type::caption, {.maxWidth = tw});
-    // Title, subtitle, progress track and status line, centered as one block.
+    gfx::TextLayoutPtr o;
+    if (!info_.overview.empty()) o = gfx::text::layout(info_.overview, type::footnote, {.maxWidth = tw});
+    // Title, subtitle, summary, progress track and status line, centered as one block.
     const float trackGap = 6, statusGap = 6;
-    const float blockH = t->height + 1 + s->height + trackGap + 6 + statusGap + st->height;
+    const float summaryH = o ? o->height + 2 : 0.0f;
+    const float blockH = t->height + 1 + s->height + summaryH + trackGap + 6 + statusGap + st->height;
     const float y0 = std::round((height() - blockH) * 0.5f);
     r.drawText(*t, {tx, y0}, color::textPrimary);
     r.drawText(*s, {tx, y0 + t->height + 1}, color::textTertiary);
+    if (o) r.drawText(*o, {tx, y0 + t->height + 1 + s->height + 2}, color::textTertiary);
 
-    const Rect track{tx, y0 + t->height + 1 + s->height + trackGap, tw, 6};
+    const Rect track{tx, y0 + t->height + 1 + s->height + summaryH + trackGap, tw, 6};
     r.fillRoundRect(track, 3, color::progressTrack);
     const float p = std::clamp(progress_.value(), 0.0f, 1.0f);
     Color fillColor = color::accent;
@@ -218,7 +222,7 @@ void OfflineItemRow::refreshHints() {
     setHints(std::move(hints));
 }
 
-Vec2 OfflineItemRow::measure(Vec2 available) { return {available.x, kHeight}; }
+Vec2 OfflineItemRow::measure(Vec2 available) { return {available.x, summary_.empty() ? kHeight : kHeightWithSummary}; }
 
 void OfflineItemRow::onFocus() {
     if (focusGainSilent()) {
@@ -307,10 +311,17 @@ void OfflineItemRow::draw(Renderer& r) {
     const float tw = std::max(60.0f, right - tx);
     auto t = gfx::text::layout(title_, type::headline, {.maxWidth = tw});
     auto s = gfx::text::layout(subtitle_, type::caption, {.maxWidth = tw});
-    const float total = t->height + (subtitle_.empty() ? 0.0f : s->height + 2);
-    const float y = (height() - total) * 0.5f;
+    gfx::TextLayoutPtr o;
+    if (!summary_.empty()) o = gfx::text::layout(summary_, type::footnote, {.maxWidth = tw, .maxLines = 2});
+    const float total = t->height + (subtitle_.empty() ? 0.0f : s->height + 2) + (o ? o->height + 4 : 0.0f);
+    float y = std::round((height() - total) * 0.5f);
     r.drawText(*t, {tx, y}, ink);
-    if (!subtitle_.empty()) r.drawText(*s, {tx, y + t->height + 2}, sub);
+    y += t->height;
+    if (!subtitle_.empty()) {
+        r.drawText(*s, {tx, y + 2}, sub);
+        y += s->height + 2;
+    }
+    if (o) r.drawText(*o, {tx, y + 4}, sub);
 }
 
 }  // namespace karafin::screens

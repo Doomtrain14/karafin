@@ -805,6 +805,21 @@ void PlayerScreen::refreshInfo() {
     if (fps && *fps > 0) video += std::format(" @ {:.3g} fps", *fps);
     add("Video", video);
     add("Decoder", hwdec_.empty() || hwdec_ == "no" ? std::string("Software") : "Hardware (" + hwdec_ + ")");
+    {
+        const std::string primaries = mpv_->getString("video-params/primaries");
+        const std::string gamma = mpv_->getString("video-params/gamma");
+        const std::string levels = mpv_->getString("video-params/colorlevels");
+        // sig-peak is relative to SDR reference white (203 nits).
+        const double peak = mpv_->getDouble("video-params/sig-peak").value_or(0);
+        std::string colour;
+        for (const std::string& part :
+             {primaries, gamma, levels, peak > 1.01 ? std::format("{:.0f} nits", peak * 203.0) : std::string()}) {
+            if (part.empty()) continue;
+            if (!colour.empty()) colour += "  ·  ";
+            colour += part;
+        }
+        add("Colour", colour);
+    }
     add("Video bitrate", formatBitrate(mpv_->getDouble("video-bitrate").value_or(0)));
     std::string audio = mpv_->getString("audio-codec-name");
     if (auto ch = mpv_->getInt("audio-params/channel-count")) audio += std::format("  {} ch", *ch);

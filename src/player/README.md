@@ -154,11 +154,14 @@ so audio track changes and transcode fallbacks show up.
     rejected. With `player.hwdec=false`, `hwdec=no`. All of it is in `configureHwdec()` in
     `mpv.cpp`.
   * `hwdec-codecs=h264,hevc,vp8,vp9,mpeg1/2,mpeg4,vc1,wmv3`
-  * `vd-lavc-threads=3`, `vd-lavc-skiploopfilter=nonref`, `vd-lavc-dr=no` (direct rendering
-    needs the render API's advanced control, which stays off because the main thread makes
-    synchronous mpv calls)
+  * `vd-lavc-threads=3`, `vd-lavc-dr=no` (direct rendering needs the render API's advanced
+    control, which stays off because the main thread makes synchronous mpv calls)
+  * `vd-lavc-software-fallback=60`: the nvtegra decoder reports frames with damaged macroblocks
+    as errors, and mpv's default (3) would switch a 4K HEVC stream to software decoding
+    mid-GOP. A switch is logged as a warning.
 * Rendering and sync:
   * bilinear scalers, no dithering or debanding (GPU budget)
+  * HDR: `hdr-compute-peak=no` (no compute shaders), `tone-mapping=hable`
   * `video-sync=audio`, `video-timing-offset=0` (rendering never blocks, so frames are taken at
     their display time), `opengl-glfinish=yes` (avoids sporadic GPU crashes on this GL stack)
   * `hr-seek=yes`, `keep-open=yes`, `ytdl=no`, `config=no`

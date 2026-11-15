@@ -52,6 +52,7 @@ Json taskToJson(const Task& t) {
         {"year", i.productionYear},
         {"runTimeTicks", i.runTimeTicks},
         {"container", i.container},
+        {"overview", i.overview},
         {"state", std::string(stateName(i.state))},
         {"error", i.error},
         {"pausedByUser", i.pausedByUser},
@@ -100,6 +101,7 @@ std::optional<Task> taskFromJson(const Json& j) {
     i.productionYear = static_cast<int>(jint(j, "year", 0));
     i.runTimeTicks = jint(j, "runTimeTicks", 0);
     i.container = jstr(j, "container");
+    i.overview = jstr(j, "overview");
     i.state = parseState(jstr(j, "state")).value_or(State::Paused);
     i.error = jstr(j, "error");
     i.pausedByUser = jbool(j, "pausedByUser");
