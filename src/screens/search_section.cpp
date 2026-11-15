@@ -7,6 +7,7 @@
 #include "gfx/text.hpp"
 #include "jellyfin/client.hpp"
 #include "screens/common.hpp"
+#include "screens/library_lock.hpp"
 #include "screens/keyboard.hpp"
 #include "screens/widgets/error_row.hpp"
 #include "screens/widgets/item_card.hpp"
@@ -132,6 +133,10 @@ SearchSection::~SearchSection() { token_.cancel(); }
 
 void SearchSection::onSectionShown(bool first) {
     if (first) focus().setFocus(field_);
+    else if (!query_.empty() && lockRevision_ != LibraryLock::instance().revision()) {
+        showSkeletons();
+        run();
+    }
 }
 
 bool SearchSection::onInput(const InputEvent& e) {
@@ -197,6 +202,17 @@ void SearchSection::run() {
     pending_ = static_cast<int>(std::size(kGroups));
     found_ = 0;
     failed_ = 0;
+    lockRevision_ = LibraryLock::instance().revision();
+    // Titles from locked libraries are left out, so their list has to be known first.
+    LibraryLock::instance().prepare([this, tok = token_] {
+        if (!tok.cancelled()) runQueries();
+    });
+}
+
+void SearchSection::runQueries() {
+    auto client = jf::currentClient();
+    if (!client) return;
+    lockRevision_ = LibraryLock::instance().revision();
     const std::string query = query_;
     for (const Group& g : kGroups) {
         jf::ItemsQuery q;
@@ -207,13 +223,15 @@ void SearchSection::run() {
         client->items(q).then(
             [this, order, title, shape, query](jf::Result<jf::QueryResult<jf::BaseItem>> r) {
                 --pending_;
-                if (r && !r->items.empty()) {
-                    found_ += static_cast<int>(r->items.size());
-                    const std::string heading = r->totalRecordCount > static_cast<int>(r->items.size())
+                bool filtered = false;
+                const auto items = r ? LibraryLock::instance().filter(r->items, &filtered) : std::vector<jf::BaseItem>();
+                if (!items.empty()) {
+                    found_ += static_cast<int>(items.size());
+                    const std::string heading = !filtered && r->totalRecordCount > static_cast<int>(items.size())
                                                     ? std::format("{} ({})", title, formatCount(r->totalRecordCount))
                                                     : title;
                     auto row = std::make_unique<RowCarousel>(heading);
-                    for (const auto& it : r->items) row->items()->add<ItemCard>(shape)->setItem(it);
+                    for (const auto& it : items) row->items()->add<ItemCard>(shape)->setItem(it);
                     rows_->place(order, std::move(row));
                 } else {
                     rows_->remove(order);

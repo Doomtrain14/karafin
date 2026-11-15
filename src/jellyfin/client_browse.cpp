@@ -147,6 +147,19 @@ Call<UserData> Client::setPlayed(std::string itemId, bool played) {
     return jsonCall<UserData>(std::move(req), ErrorContext::Generic, parseUserData);
 }
 
+Call<Unit> Client::refreshLibrary() {
+    return emptyCall(request(http::Method::Post, "/Library/Refresh"), ErrorContext::Generic);
+}
+
+Call<Unit> Client::refreshItem(std::string itemId) {
+    QueryParams q{{"Recursive", "true"},
+                  {"MetadataRefreshMode", "Default"},
+                  {"ImageRefreshMode", "Default"},
+                  {"ReplaceAllMetadata", "false"},
+                  {"ReplaceAllImages", "false"}};
+    return emptyCall(request(http::Method::Post, "/Items/" + http::urlEncode(itemId) + "/Refresh", q),
+                     ErrorContext::Generic);
+}
 // --- Images ------------------------------------------------------------------------------------
 
 std::string Client::itemImageUrl(const std::string& itemId, ImageType type, const std::string& tag,

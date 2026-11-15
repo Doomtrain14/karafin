@@ -60,6 +60,7 @@ void ItemCard::setItem(const jellyfin::BaseItem& item) {
 }
 
 bool ItemCard::onInput(const InputEvent& e) {
+    if (onKey && onKey(e)) return true;
     if (e.pressed() && e.button == Key::X) {
         if (item_.isPlayable()) {
             playItem(item_);

@@ -33,8 +33,9 @@ first tab, on the first tab it opens the quit confirmation.
 | `login_screen` | remembered accounts (Y forgets), public users, other user, password via swkbd, Quick Connect |
 | `main_screen` | header (wordmark, account chip), TabBar, lazily created `SectionView`s with fade/slide |
 | `home_section` | hero carousel + Continue Watching, Next Up, Recently Added per library, My Libraries; skeleton rows; quiet refresh on return; failed hero / Recently Added rows become inline errors with Try again |
-| `libraries_section` | library tiles + Favorites |
-| `library_screen` | sparse-paged virtual grid over `/Items`, sort (X) / filter + genre (Y) / A-Z jump (−); failed pages retry with backoff (3 s doubling, max 30 s) while visible; settings `ui.library_sort`, `ui.library_desc` |
+| `libraries_section` | library tiles + Favorites; X locks / unlocks a library, Y scans it (administrators) |
+| `library_lock` | in-app password lock for libraries (`lock.password_hash`, salted iterated SHA-256; `lock.libraries`): gates opening locked libraries, lists their titles so Home and Search can leave them out, session-wide unlock until restart or Lock now |
+| `library_screen` | sparse-paged virtual grid over `/Items`, sort (X) / filter + genre (Y) / A-Z jump (−); failed pages retry with backoff (3 s doubling, max 30 s) while visible; settings `ui.library_sort`, `ui.library_desc`; administrators get a Scan library button |
 | `detail_screen` | movie / episode page: badges, Resume + From start (or Play), audio, subtitle and version pickers, favorite, watched, download, episode / cast / similar rows |
 | `series_screen` | series page: next-up play, seasons TabBar (L/R) or picker, season actions, episode rows, series / season download |
 | `search_section` | swkbd search (A on the field, or Y), debounced grouped results, partial-failure warning row with Try again, recent searches (`ui.recent_searches`) |

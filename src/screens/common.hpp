@@ -59,6 +59,11 @@ std::string cardSubtitle(const jf::BaseItem& item, bool wide);
 // Pushes the right page for an item: series / season -> series page, playable -> detail page,
 // folders / collections / libraries -> library grid, person -> filmography.
 void openItem(const jf::BaseItem& item);
+// Admin only: asks the server to scan one library (or all of them when `libraryId` is empty)
+// for new files and metadata; toasts the outcome.
+void scanLibrary(const std::string& libraryId, const std::string& name);
+// The signed-in user is a server administrator.
+bool isAdmin();
 
 // ---- Playback -----------------------------------------------------------------------------------
 struct PlayOptions {

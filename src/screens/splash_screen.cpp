@@ -24,9 +24,7 @@ namespace {
 constexpr float kMinColdTime = 1.3f;
 constexpr float kMinWarmTime = 0.35f;
 const gfx::TextStyle kWordmark{42, gfx::FontWeight::SemiBold, 1.0f, 0.6f};
-// Corner radius of the rounded-square mark, as a fraction of its side (tools/gen_icon.py).
-constexpr float kIconRadius = 0.20f;
-constexpr float kIcon = 168.0f;
+constexpr float kIcon = 176.0f;
 }  // namespace
 
 SplashScreen::SplashScreen(bool coldStart) : coldStart_(coldStart) {
@@ -42,7 +40,7 @@ SplashScreen::SplashScreen(bool coldStart) : coldStart_(coldStart) {
     problem_->setFrame({0, 300, theme::layout::screenWidth, 380});
     logo_.springTo(1.0f, SpringSpec{0.9f, 0.78f});
     gfx::ImageRequest req;
-    req.url = paths::romfs("icon.jpg");
+    req.url = paths::romfs("logo.png");
     // Decode at the drawn size: the area-averaged shrink stays smooth, while GL minifying the
     // full-size texture (no mipmaps) leaves jagged edges.
     req.width = req.height = static_cast<int>(std::ceil(kIcon * ui::displayScale()));
@@ -204,12 +202,15 @@ void SplashScreen::draw(Renderer& r) {
     const Vec2 center{b.w * 0.5f, 300.0f - 120.0f * lift};
     r.pushTransform(gfx::Affine::scaleAround(s, center));
     r.pushAlpha(a);
-    // Same mark as the home-menu icon, sitting where the drawn jellyfish used to.
-    const Rect icon{center.x - kIcon * 0.5f, center.y - 176.0f, kIcon, kIcon};
-    const float radius = kIcon * kIconRadius;
+    const Rect icon{center.x - kIcon * 0.5f, center.y - 180.0f, kIcon, kIcon};
+    // The mark floats gently while a soft glow breathes behind it.
+    const float bob = std::sin(t * 1.7f) * 5.0f;
+    const float pulse = 0.5f + 0.5f * std::sin(t * 1.7f - 0.6f);
+    const Rect glow = icon.inset(18);
+    r.drawShadow(glow, glow.w * 0.5f, 70 + 20 * pulse, color::accent.withAlpha(0.18f + 0.14f * pulse));
     if (const gfx::Texture* tex = icon_ ? icon_->texture() : nullptr) {
-        r.drawShadow(icon, radius, 28, gfx::Color(0, 0, 0, 0.45f), {0, 10});
-        r.drawImage(*tex, icon, {.fit = gfx::ImageFit::Fill, .radius = radius});
+        const Rect mark{icon.x, icon.y + bob, icon.w, icon.h};
+        r.drawImage(*tex, mark, {.fit = gfx::ImageFit::Fill});
     }
     auto layout = gfx::text::layout("Karafin", kWordmark);
     const Vec2 pos{center.x - layout->width * 0.5f, icon.bottom() + 22};

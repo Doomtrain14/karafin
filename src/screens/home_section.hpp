@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
@@ -88,6 +89,7 @@ private:
     bool focusClaimed_ = false;
     bool heroDone_ = false;
     bool shown_ = false;
+    uint64_t lockRevision_ = 0;  // LibraryLock::revision() the rows were filtered with
 
     jellyfin::BaseItem backdropItem_;
     float backdropDelay_ = -1;

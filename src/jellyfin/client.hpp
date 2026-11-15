@@ -94,6 +94,9 @@ public:
                                               std::string includeItemTypes = "Movie,Series,Episode");
     Call<UserData> setFavorite(std::string itemId, bool favorite);
     Call<UserData> setPlayed(std::string itemId, bool played);
+    // Admin only: scan every library, or one library/folder (new files and metadata).
+    Call<Unit> refreshLibrary();
+    Call<Unit> refreshItem(std::string itemId);
 
     // --- Images (no network; image endpoints need no auth) -------------------------------------
     // "" when neither the item nor (with fallback) its parents/series have that image.

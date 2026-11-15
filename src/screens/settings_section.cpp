@@ -13,6 +13,7 @@
 #include "gfx/image.hpp"
 #include "jellyfin/client.hpp"
 #include "screens/common.hpp"
+#include "screens/library_lock.hpp"
 #include "screens/session.hpp"
 #include "ui/root.hpp"
 #include "ui/sound.hpp"
@@ -215,6 +216,27 @@ std::vector<ListItem> SettingsSection::buildItems(Category c) {
                 const std::string sid = client->serverId();
                 out.push_back({"Switch user", "Pick another account on this server", "", gfx::Icon::User, false, true,
                                [sid] { goToLogin(sid); }});
+                if (user.policy.isAdministrator)
+                    out.push_back({"Scan all libraries", "Ask the server to look for new and changed files", "",
+                                   gfx::Icon::Refresh, false, true, [] { scanLibrary({}, {}); }});
+                LibraryLock& lock = LibraryLock::instance();
+                const bool hasLock = lock.hasPassword();
+                out.push_back({hasLock ? "Change lock password" : "Library lock",
+                               hasLock ? "Lock or unlock a library with X in the Libraries tab"
+                                       : "Set a password to hide libraries (X on a library in the Libraries tab)",
+                               hasLock ? "On" : "Off", gfx::Icon::Lock, hasLock, true,
+                               [this] { LibraryLock::instance().changePassword(guard([this] { refresh(); })); }});
+                if (hasLock) {
+                    const bool open = lock.unlockedThisSession();
+                    out.push_back({"Lock now", open ? "Hide locked libraries again" : "Locked libraries are hidden", "",
+                                   gfx::Icon::Lock, false, open, [this] {
+                                       LibraryLock::instance().lockNow();
+                                       refresh();
+                                   }});
+                    out.push_back({"Turn off library lock", "Removes the password and every lock", "", gfx::Icon::Close,
+                                   false, true,
+                                   [this] { LibraryLock::instance().removePassword(guard([this] { refresh(); })); }});
+                }
             }
             out.push_back({"Change server", "Add or pick another Jellyfin server", "", gfx::Icon::Server, false, true,
                            [] { goToServerSelect(); }});
@@ -268,12 +290,12 @@ std::vector<ListItem> SettingsSection::buildItems(Category c) {
                                   {"15 seconds", 15, ""},
                                   {"30 seconds", 30, ""},
                                   {"60 seconds", 60, ""}},
-                                 30, {}, "How far each skip jumps"));
+                                 10, {}, "How far each skip jumps"));
             out.push_back(choice("Skip with", "player.skip_input",
-                                 {{"Buttons and double-tap", "both", "Both ways skip"},
+                                 {{"Double-tap only", "tap", "Default - double-tap the left or right side of the screen"},
                                   {"Buttons only", "buttons", "L / R, and ZL / ZR when a video has no chapters"},
-                                  {"Double-tap only", "tap", "Double-tap the left or right side of the screen"}},
-                                 "both", {}, "What skips back or forward during playback"));
+                                  {"Buttons and double-tap", "both", "Both ways skip"}},
+                                 "tap", {}, "What skips back or forward during playback"));
             break;
         }
         case Category::Subtitles: {

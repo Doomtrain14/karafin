@@ -325,8 +325,8 @@ void PlayerScreen::startItem(PlayRequest request) {
     skipMode_ = settings.get<std::string>("player.skip_segments", "ask");
     autoplayNext_ = settings.get<bool>("player.autoplay_next", true);
     seekStep_ = std::clamp(settings.get<int>("player.seek_step", 10), 3, 120);
-    skipSeconds_ = std::clamp(settings.get<int>("player.skip_seconds", 30), 5, 300);
-    const auto skipInput = settings.get<std::string>("player.skip_input", "both");
+    skipSeconds_ = std::clamp(settings.get<int>("player.skip_seconds", 10), 5, 300);
+    const auto skipInput = settings.get<std::string>("player.skip_input", "tap");
     buttonSkip_ = skipInput != "tap";
     doubleTapSeek_ = skipInput != "buttons";
     showOsd(4.0);

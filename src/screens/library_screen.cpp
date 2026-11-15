@@ -44,15 +44,22 @@ LibraryScreen::LibraryScreen(LibrarySpec spec) : spec_(std::move(spec)) {
     subtitle_ = add<Label>("", theme::type::callout, theme::color::textSecondary);
     subtitle_->setFrame({theme::layout::marginX, 82, 760, 22});
 
+    const bool canScan = !spec_.parentId.empty() && isAdmin();
+    const float buttonCount = canScan ? 4.0f : 3.0f;
+    const float buttonsW = buttonCount * 48 + (buttonCount - 1) * 12;
     auto* buttons = add<Box>(Axis::Horizontal);
     buttons->setSpacing(12);
-    buttons->setFrame({theme::layout::screenWidth - theme::layout::marginX - 3 * 48 - 2 * 12, 40, 3 * 48 + 2 * 12, 48});
+    buttons->setFrame({theme::layout::screenWidth - theme::layout::marginX - buttonsW, 40, buttonsW, 48});
     sortBtn_ = buttons->add<ActionButton>("", gfx::Icon::List, ButtonStyle::Icon, "Sort");
     filterBtn_ = buttons->add<ActionButton>("", gfx::Icon::Filter, ButtonStyle::Icon, "Filter");
     jumpBtn_ = buttons->add<ActionButton>("", gfx::Icon::ChevronDown, ButtonStyle::Icon, "Jump to");
     sortBtn_->onActivate = [this] { openSort(); };
     filterBtn_->onActivate = [this] { openFilter(); };
     jumpBtn_->onActivate = [this] { openJump(); };
+    if (canScan) {
+        auto* scan = buttons->add<ActionButton>("", gfx::Icon::Refresh, ButtonStyle::Icon, "Scan library");
+        scan->onActivate = [this] { scanLibrary(spec_.parentId, spec_.title); };
+    }
 
     const Vec2 cell = PosterCard(CardShape::Poster).measure({});
     grid_ = add<Grid>(cell);

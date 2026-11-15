@@ -51,6 +51,13 @@ offline viewing with pause and resume.
   - Movie, series, season and episode pages with cast, similar titles, and audio, subtitle and
     version pickers.
   - Search, favorites, and marking items watched or unwatched.
+  - Library lock: press X on a library in the Libraries tab to hide it behind a password. Locked
+    libraries need the password to open and their titles are left out of Home and Search until
+    you unlock them (until the app restarts or **Lock now**). This is a convenience lock inside
+    Karafin, not real security: the server account can still see everything, and Favorites,
+    Downloads and "More like this" are not filtered.
+  - Administrators can ask the server to scan a library for new files: Y on a library tile, the
+    refresh button on a library page, or **Scan all libraries** in Settings > Account.
 - **Playback**
   - Direct play of mkv/mp4/webm/avi/ts with H.264, HEVC (8- and 10-bit), VP8/VP9 and MPEG-2/VC-1
     decoded in hardware (NVDEC). AV1 is decoded in software, up to 1080p.
@@ -149,15 +156,15 @@ The button names below are the Nintendo labels: A is the right face button and B
 | --- | --- |
 | A | Play/pause. Also confirms a seek preview, presses a visible Skip button, or plays the next episode |
 | D-pad ← / → (or stick) | Seek preview. Hold to speed up. It commits on release, or right away with A |
-| L / R | Skip back / forward (30 seconds by default, set by **Skip amount** in Settings > Playback). Can be turned off with **Skip with** |
-| ZL / ZR | Previous / next chapter. Without chapters, skips like L / R |
+| L / R | Skip back / forward by the **Skip amount** (10 seconds by default). Off by default; turn it on with **Skip with** in Settings > Playback |
+| ZL / ZR | Previous / next chapter. Without chapters, skips like L / R when button skipping is on |
 | Y | Audio and subtitles, including **Download subtitles** |
 | X | Options: speed, subtitle delay, size and position, aspect ratio and zoom, chapters, playback info |
 | − | Show or hide the playback info overlay |
 | ↑ / ↓ | Show the on-screen controls |
 | B | Cancel the seek preview, hide the controls, then leave the player |
 | Touch | Tap to show the controls and press on-screen buttons. Drag on the seek bar to scrub |
-| Double-tap the left / right side | Skip back / forward by the **Skip amount**. Tap again quickly to skip further. Can be turned off with **Skip with** |
+| Double-tap the left / right side | Skip back / forward by the **Skip amount** (10 seconds by default). Tap again quickly to skip further. This is the default way to skip; change it with **Skip with** |
 | Swipe up / down on the left | Raise / lower screen brightness (handheld). The original brightness and automatic brightness setting are restored when leaving playback or opening HOME |
 | Swipe up / down on the right | Raise / lower playback volume (0-200%, independent of the console's volume buttons; above 100% boosts quiet audio) |
 
@@ -180,6 +187,10 @@ back.
 Settings are grouped into Account, Playback, Subtitles, Downloads, Interface and About. The most
 useful ones:
 
+- **Account**
+  - Library lock: set or change the password, **Lock now**, or turn the lock off (removes the
+    password and every lock).
+  - **Scan all libraries** (administrators only).
 - **Playback**
   - Max streaming bitrate and max audio channels. These decide when the server has to transcode.
   - CPU clock: System, 1428 MHz or 1785 MHz (default 1785 MHz).
@@ -191,7 +202,8 @@ useful ones:
   - Hardware decoding: on by default. Turn it off only to troubleshoot.
   - Preferred audio language, autoplay of the next episode, and skipping of intros and credits
     (ask, automatic or off).
-  - Seek step (D-pad), skip amount, and whether skipping uses the L / R and ZL / ZR buttons, double-tap, or both.
+  - Seek step (D-pad), skip amount (default 10 seconds), and whether skipping uses double-tap
+    (default), the L / R and ZL / ZR buttons, or both.
 - **Subtitles**: mode, preferred language, text size, position and background box.
 - **Downloads**
   - Simultaneous downloads: 1 to 4 (default 1).
@@ -287,9 +299,9 @@ and range/resume helpers) run on Linux with GCC 14:
 
 Source layout and module documentation start at [`src/README-ARCH.md`](src/README-ARCH.md).
 
-The supplied icon artwork is kept in `tools/icon_source.png`. Run `python tools/gen_icon.py`
-(requires Pillow) to regenerate the 256x256 NRO icon, the full-size splash image and the README
-icon without cropping.
+The icon artwork is kept in `tools/icon_source.png` (Homebrew Menu icon, with background) and
+`tools/logo_source.png` (transparent mark). Run `python tools/gen_icon.py` (requires Pillow) to
+regenerate the 256x256 NRO icon, the splash logo (`romfs/logo.png`) and the README icon.
 
 ## Contributing
 

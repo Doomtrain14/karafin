@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -31,6 +32,7 @@ private:
     void openKeyboard();
     void setQuery(std::string query);
     void run();
+    void runQueries();
     void showSkeletons();
     void showIdle();
     void buildRecent();
@@ -45,6 +47,7 @@ private:
     int pending_ = 0;
     int found_ = 0;
     int failed_ = 0;
+    uint64_t lockRevision_ = 0;  // LibraryLock::revision() the results were filtered with
     jellyfin::ApiError lastError_;
     ui::Timeline::Handle debounce_ = 0;
     CancelToken token_;

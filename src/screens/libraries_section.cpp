@@ -4,6 +4,7 @@
 
 #include "jellyfin/client.hpp"
 #include "screens/common.hpp"
+#include "screens/library_lock.hpp"
 #include "screens/library_screen.hpp"
 #include "screens/widgets/item_card.hpp"
 #include "ui/root.hpp"
@@ -50,9 +51,9 @@ LibrariesSection::LibrariesSection() {
                 spec.filters = "IsFavorite";
                 nav().push(std::make_unique<LibraryScreen>(std::move(spec)));
             };
+            card.onKey = nullptr;
         } else {
-            card.setSubtitle({});
-            card.onOpen = nullptr;
+            bindLibrary(card, lib);
         }
     };
     status_ = add<StatusView>();
@@ -91,13 +92,44 @@ void LibrariesSection::load() {
             grid_->setVisible(true);
             grid_->alpha.set(0.0f);
             grid_->alpha.tweenTo(1.0f, theme::motion::slow, ease::outCubic);
+            lockRevision_ = LibraryLock::instance().revision();
             grid_->reload();
         },
         token_);
 }
 
+void LibrariesSection::bindLibrary(ItemCard& card, const jf::BaseItem& lib) {
+    LibraryLock& lock = LibraryLock::instance();
+    const bool locked = lock.hasPassword() && lock.isLocked(lib.id);
+    card.setSubtitle(!locked ? std::string() : lock.blocks(lib.id) ? "Locked" : "Locked - open until you lock again");
+    card.setBadge(locked && lock.blocks(lib.id) ? "Locked" : std::string());
+    card.onOpen = nullptr;
+    const bool admin = isAdmin();
+    std::vector<Hint> hints{{Key::X, locked ? "Remove lock" : "Lock"}};
+    if (admin) hints.push_back({Key::Y, "Scan library"});
+    card.setHints(std::move(hints));
+    card.onKey = [this, lib, admin](const InputEvent& e) {
+        if (!e.pressed()) return false;
+        if (e.button == Key::X) {
+            LibraryLock::instance().toggleLibrary(lib, guard([this] { refreshCards(); }));
+            return true;
+        }
+        if (e.button == Key::Y && admin) {
+            scanLibrary(lib.id, lib.name);
+            return true;
+        }
+        return false;
+    };
+}
+
+void LibrariesSection::refreshCards() {
+    lockRevision_ = LibraryLock::instance().revision();
+    if (grid_->visible()) grid_->reload();
+}
+
 void LibrariesSection::onSectionShown(bool first) {
     if (!first && !grid_->visible() && !status_->showing() && !skeleton_->visible()) load();
+    else if (lockRevision_ != LibraryLock::instance().revision()) refreshCards();
 }
 
 float LibrariesSection::headerScrim() const { return 1.0f; }

@@ -25,6 +25,8 @@ public:
 
     // Overrides the default "open item" action.
     std::function<void(const jellyfin::BaseItem&)> onOpen;
+    // Gets button presses first; return true to consume them (replaces X / Y handling).
+    std::function<bool(const ui::InputEvent&)> onKey;
 
     bool onInput(const ui::InputEvent& e) override;
     void update(float dt) override;

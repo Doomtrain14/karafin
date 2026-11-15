@@ -103,7 +103,7 @@ client->logout();                                        // clears the token loc
 `userViews()`, `resumeItems(limit)`, `nextUp(limit, seriesId)`, `latest(parentId, limit)`,
 `items(ItemsQuery)`, `item(id)` (detail fields, plus Trickplay on 10.9+), `seasons(seriesId)`,
 `episodes(seriesId, seasonId = "")` (with MediaSources, MediaStreams, Overview, Chapters and
-Trickplay), `similar(id)`, `searchHints(term)`, `setFavorite(id, bool)`, `setPlayed(id, bool)`.
+Trickplay), `similar(id)`, `searchHints(term)`, `setFavorite(id, bool)`, `setPlayed(id, bool)`, and for administrators `refreshLibrary()` (POST `/Library/Refresh`) and `refreshItem(id)` (POST `/Items/{id}/Refresh`, recursive).
 The last two return the updated `UserData`.
 
 ```cpp

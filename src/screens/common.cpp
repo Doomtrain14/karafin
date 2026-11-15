@@ -8,6 +8,7 @@
 
 #include "player/player.hpp"
 #include "screens/detail_screen.hpp"
+#include "screens/library_lock.hpp"
 #include "screens/library_screen.hpp"
 #include "screens/series_screen.hpp"
 #include "ui/root.hpp"
@@ -278,6 +279,10 @@ void openItem(const jf::BaseItem& item) {
         return;
     }
     if (item.isFolder) {
+        if (LibraryLock::instance().blocks(item.id)) {
+            LibraryLock::instance().requestUnlock([item] { openItem(item); });
+            return;
+        }
         LibrarySpec spec;
         spec.title = item.name;
         spec.parentId = item.id;
@@ -287,6 +292,25 @@ void openItem(const jf::BaseItem& item) {
         return;
     }
     ui::toast("This item can't be opened here", ui::ToastKind::Info, gfx::Icon::Info);
+}
+
+void scanLibrary(const std::string& libraryId, const std::string& name) {
+    auto client = jf::currentClient();
+    if (!client) return;
+    auto call = libraryId.empty() ? client->refreshLibrary() : client->refreshItem(libraryId);
+    const std::string what = libraryId.empty() ? std::string("all libraries") : name;
+    call.then([what](jf::Result<jf::Unit> r) {
+        if (!r) {
+            ui::toast("Couldn't start the scan. " + errorMessage(r.error), ui::ToastKind::Error, gfx::Icon::Warning);
+            return;
+        }
+        ui::toast("Scanning " + what + " on the server", ui::ToastKind::Success, gfx::Icon::Refresh);
+    });
+}
+
+bool isAdmin() {
+    auto client = jf::currentClient();
+    return client && client->user().policy.isAdministrator;
 }
 
 // ---- Playback -----------------------------------------------------------------------------------

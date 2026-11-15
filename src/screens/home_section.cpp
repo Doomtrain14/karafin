@@ -5,6 +5,7 @@
 
 #include "jellyfin/client.hpp"
 #include "screens/common.hpp"
+#include "screens/library_lock.hpp"
 #include "screens/widgets/error_row.hpp"
 #include "screens/widgets/item_card.hpp"
 #include "screens/widgets/skeleton.hpp"
@@ -92,10 +93,16 @@ void HomeSection::load() {
     }
     pending_ = 3;
     failures_ = 0;
-    loadHero();
-    loadResume(false);
-    loadNextUp(false);
-    loadViews();
+    // Titles from locked libraries are left out, so their list has to be known first.
+    lockRevision_ = LibraryLock::instance().revision();
+    LibraryLock::instance().prepare([this, tok = token_] {
+        if (tok.cancelled()) return;
+        lockRevision_ = LibraryLock::instance().revision();
+        loadHero();
+        loadResume(false);
+        loadNextUp(false);
+        loadViews();
+    });
 }
 
 void HomeSection::finishRequest(const jf::ApiError* error) {
@@ -139,13 +146,13 @@ void HomeSection::loadHero() {
         [this, client, latestQ, tok](jf::Result<jf::QueryResult<jf::BaseItem>> resume) {
             auto entries = std::make_shared<std::vector<HeroEntry>>();
             if (resume)
-                for (auto& it : resume->items)
+                for (auto& it : LibraryLock::instance().filter(resume->items))
                     if (!backdropRequest(it).url.empty()) entries->push_back({it, "CONTINUE WATCHING"});
             const jf::ApiError resumeError = resume.error;  // kind None on success
             client->items(latestQ).then(
                 [this, entries, resumeError](jf::Result<jf::QueryResult<jf::BaseItem>> latest) {
                     if (latest) {
-                        for (auto& it : latest->items) {
+                        for (auto& it : LibraryLock::instance().filter(latest->items)) {
                             if (entries->size() >= 7) break;
                             const bool dup = std::any_of(entries->begin(), entries->end(),
                                                          [&](const HeroEntry& e) { return e.item.id == it.id; });
@@ -217,10 +224,11 @@ void HomeSection::loadResume(bool quiet) {
                 }
                 return;
             }
-            const std::string sig = signature(r->items);
+            const auto items = LibraryLock::instance().filter(r->items);
+            const std::string sig = signature(items);
             if (quiet && signatures_[kResume] == sig) return;
             signatures_[kResume] = sig;
-            applyRow(kResume, "Continue Watching", r->items, CardShape::Wide);
+            applyRow(kResume, "Continue Watching", items, CardShape::Wide);
             if (!quiet) finishRequest(nullptr);
             tryClaimFocus();
         },
@@ -235,10 +243,11 @@ void HomeSection::loadNextUp(bool quiet) {
                 if (!quiet) finishRequest(&r.error);
                 return;
             }
-            const std::string sig = signature(r->items);
+            const auto items = LibraryLock::instance().filter(r->items);
+            const std::string sig = signature(items);
             if (quiet && signatures_[kNextUp] == sig) return;
             signatures_[kNextUp] = sig;
-            applyRow(kNextUp, "Next Up", r->items, CardShape::Wide);
+            applyRow(kNextUp, "Next Up", items, CardShape::Wide);
             if (!quiet) finishRequest(nullptr);
             tryClaimFocus();
         },
@@ -260,7 +269,7 @@ void HomeSection::loadViews() {
             for (const auto& view : r->items) {
                 if (!showInLibraries(view)) continue;
                 libs.push_back(view);
-                if (!showLatestFor(view.collectionType)) continue;
+                if (!showLatestFor(view.collectionType) || LibraryLock::instance().blocks(view.id)) continue;
                 const int order = kLatest + slot++;
                 const CardShape shape = latestShape(view.collectionType);
                 rows_->place(order, std::make_unique<SkeletonRow>(shape, 8));
@@ -289,10 +298,11 @@ void HomeSection::loadLatest(const LatestRow& row, bool quiet) {
                 }
                 return;
             }
-            const std::string sig = signature(*items);
+            const auto shown = LibraryLock::instance().filter(*items);
+            const std::string sig = signature(shown);
             if (quiet && !showingError && signatures_[row.order] == sig) return;
             signatures_[row.order] = sig;
-            applyRow(row.order, row.title, *items, row.shape);
+            applyRow(row.order, row.title, shown, row.shape);
             tryClaimFocus();
         },
         quiet ? refreshToken_ : token_);
@@ -376,7 +386,9 @@ void HomeSection::showBackdropFor(const jf::BaseItem& item, float delay) {
 
 void HomeSection::onSectionShown(bool first) {
     shown_ = true;
-    if (!first) {
+    if (!first && lockRevision_ != LibraryLock::instance().revision()) {
+        load();
+    } else if (!first) {
         refreshContinue();
         // The player reports the stop position asynchronously while the pop transition runs, so
         // the first refresh can still see the old position: check once more shortly after.

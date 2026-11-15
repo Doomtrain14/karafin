@@ -51,8 +51,8 @@ player::shutdown();   // app quit: first thing in onStop (main thread), before u
 | `player.skip_segments` | string | `"ask"` | Intro/recap/preview/ad/credits segments: `ask` shows a Skip button, `auto` skips them with a toast, `off` ignores them |
 | `player.hwdec` | bool | `true` | Hardware decoding (`nvtegra-copy`; software fallback is automatic) |
 | `player.seek_step` | int | `10` | Seconds per D-pad step (3 to 120) |
-| `player.skip_seconds` | int | `30` | Seconds jumped by L/R and by double-tapping a side of the screen (5 to 300; the menu offers 5, 10, 15, 30, 60) |
-| `player.skip_input` | string | `"both"` | What skips by `skip_seconds`: `buttons` (L / R, and ZL / ZR without chapters), `tap` (double-tap the left / right third of the screen) or `both`. ZL / ZR chapter jumps work either way |
+| `player.skip_seconds` | int | `10` | Seconds jumped by L/R and by double-tapping a side of the screen (5 to 300; the menu offers 5, 10, 15, 30, 60) |
+| `player.skip_input` | string | `"tap"` | What skips by `skip_seconds`: `buttons` (L / R, and ZL / ZR without chapters), `tap` (double-tap the left / right third of the screen) or `both`. ZL / ZR chapter jumps work either way |
 
 The player also reads `http.verify_tls` (core) for TLS verification of the stream.
 
