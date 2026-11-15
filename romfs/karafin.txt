@@ -1,0 +1,1 @@
+Karafin romfs. Fonts, shaders and UI icons are added under romfs/ by the gfx/ui modules.
