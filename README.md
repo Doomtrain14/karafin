@@ -1,8 +1,18 @@
-# Karafin
+<p align="center">
+  <img src="docs/images/icon.jpg" alt="Karafin icon" width="160">
+</p>
 
-[![Latest release](https://img.shields.io/github/v/release/Doomtrain14/karafin)](https://github.com/Doomtrain14/karafin/releases/latest)
-[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
-![Platform: Nintendo Switch](https://img.shields.io/badge/platform-Nintendo%20Switch-e60012.svg)
+<h1 align="center">Karafin</h1>
+
+<p align="center">
+  <a href="https://github.com/Doomtrain14/karafin/releases/latest"><img src="https://img.shields.io/github/v/release/Doomtrain14/karafin?sort=semver&display_name=tag" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue.svg" alt="License: GPL-3.0"></a>
+  <img src="https://img.shields.io/badge/platform-Nintendo%20Switch-e60012.svg" alt="Platform: Nintendo Switch">
+</p>
+
+<p align="center">
+  <img src="docs/images/home.jpg" alt="Karafin home screen" width="800">
+</p>
 
 Karafin is a [Jellyfin](https://jellyfin.org) client for the Nintendo Switch, written in C++20.
 It runs as a homebrew `.nro` on Atmosphère and is built with current libnx for firmware 22.
