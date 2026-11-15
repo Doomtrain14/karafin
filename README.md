@@ -1,9 +1,6 @@
 <p align="center">
   <img src="docs/images/icon.png" alt="Karafin icon" width="160">
 </p>
-
-<h1 align="center">Karafin</h1>
-
 <p align="center">
   <a href="https://github.com/Doomtrain14/karafin/releases/latest"><img src="https://img.shields.io/github/v/release/Doomtrain14/karafin?sort=semver&display_name=tag" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue.svg" alt="License: GPL-3.0"></a>
