@@ -51,13 +51,15 @@ offline viewing with pause and resume.
   - Movie, series, season and episode pages with cast, similar titles, and audio, subtitle and
     version pickers.
   - Search, favorites, and marking items watched or unwatched.
-  - Library lock: press X on a library in the Libraries tab to hide it behind a password. Locked
-    libraries need the password to open and their titles are left out of Home and Search until
-    you unlock them (until the app restarts or **Lock now**). This is a convenience lock inside
+  - Library lock: press X on a library in the Libraries tab to lock it with a D-pad code of 4 or
+    6 steps. A locked library needs the code to open and its titles are left out of Home and
+    Search. Unlocking opens that one library until you lock it again (X on its tile, the lock
+    button on its page, or **Lock now**) or restart the app. This is a convenience lock inside
     Karafin, not real security: the server account can still see everything, and Favorites,
     Downloads and "More like this" are not filtered.
   - Administrators can ask the server to scan a library for new files: Y on a library tile, the
-    refresh button on a library page, or **Scan all libraries** in Settings > Account.
+    refresh button on a library page, or **Scan all libraries** in Settings > Account. Each scan
+    asks for confirmation first.
 - **Playback**
   - Direct play of mkv/mp4/webm/avi/ts with H.264, HEVC (8- and 10-bit), VP8/VP9 and MPEG-2/VC-1
     decoded in hardware (NVDEC). AV1 is decoded in software, up to 1080p.
@@ -188,8 +190,8 @@ Settings are grouped into Account, Playback, Subtitles, Downloads, Interface and
 useful ones:
 
 - **Account**
-  - Library lock: set or change the password, **Lock now**, or turn the lock off (removes the
-    password and every lock).
+  - Library lock: set or change the D-pad code, **Lock now** (locks every unlocked library
+    again), or turn the lock off (removes the code and every lock).
   - **Scan all libraries** (administrators only).
 - **Playback**
   - Max streaming bitrate and max audio channels. These decide when the server has to transcode.

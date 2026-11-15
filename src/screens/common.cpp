@@ -280,7 +280,7 @@ void openItem(const jf::BaseItem& item) {
     }
     if (item.isFolder) {
         if (LibraryLock::instance().blocks(item.id)) {
-            LibraryLock::instance().requestUnlock([item] { openItem(item); });
+            LibraryLock::instance().requestUnlock(item, [item] { openItem(item); });
             return;
         }
         LibrarySpec spec;
@@ -295,17 +295,23 @@ void openItem(const jf::BaseItem& item) {
 }
 
 void scanLibrary(const std::string& libraryId, const std::string& name) {
-    auto client = jf::currentClient();
-    if (!client) return;
-    auto call = libraryId.empty() ? client->refreshLibrary() : client->refreshItem(libraryId);
     const std::string what = libraryId.empty() ? std::string("all libraries") : name;
-    call.then([what](jf::Result<jf::Unit> r) {
-        if (!r) {
-            ui::toast("Couldn't start the scan. " + errorMessage(r.error), ui::ToastKind::Error, gfx::Icon::Warning);
-            return;
-        }
-        ui::toast("Scanning " + what + " on the server", ui::ToastKind::Success, gfx::Icon::Refresh);
-    });
+    ui::present(ui::Dialog::confirm(
+        "Scan " + what + "?",
+        "The server looks for new, changed and removed files. This can take a while on large libraries.", "Scan",
+        "Cancel", [libraryId, what](bool ok) {
+            auto client = jf::currentClient();
+            if (!ok || !client) return;
+            auto call = libraryId.empty() ? client->refreshLibrary() : client->refreshItem(libraryId);
+            call.then([what](jf::Result<jf::Unit> r) {
+                if (!r) {
+                    ui::toast("Couldn't start the scan. " + errorMessage(r.error), ui::ToastKind::Error,
+                              gfx::Icon::Warning);
+                    return;
+                }
+                ui::toast("Scanning " + what + " on the server", ui::ToastKind::Success, gfx::Icon::Refresh);
+            });
+        }));
 }
 
 bool isAdmin() {

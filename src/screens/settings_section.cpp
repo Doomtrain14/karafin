@@ -220,22 +220,22 @@ std::vector<ListItem> SettingsSection::buildItems(Category c) {
                     out.push_back({"Scan all libraries", "Ask the server to look for new and changed files", "",
                                    gfx::Icon::Refresh, false, true, [] { scanLibrary({}, {}); }});
                 LibraryLock& lock = LibraryLock::instance();
-                const bool hasLock = lock.hasPassword();
-                out.push_back({hasLock ? "Change lock password" : "Library lock",
-                               hasLock ? "Lock or unlock a library with X in the Libraries tab"
-                                       : "Set a password to hide libraries (X on a library in the Libraries tab)",
+                const bool hasLock = lock.hasCode();
+                out.push_back({hasLock ? "Change lock code" : "Library lock",
+                               hasLock ? "Lock, unlock or lock again with X on a library in the Libraries tab"
+                                       : "Set a 4 or 6 step D-pad code to lock libraries (X in the Libraries tab)",
                                hasLock ? "On" : "Off", gfx::Icon::Lock, hasLock, true,
-                               [this] { LibraryLock::instance().changePassword(guard([this] { refresh(); })); }});
+                               [this] { LibraryLock::instance().changeCode(guard([this] { refresh(); })); }});
                 if (hasLock) {
-                    const bool open = lock.unlockedThisSession();
-                    out.push_back({"Lock now", open ? "Hide locked libraries again" : "Locked libraries are hidden", "",
+                    const bool open = lock.anyUnlocked();
+                    out.push_back({"Lock now", open ? "Lock every unlocked library again" : "Locked libraries are hidden", "",
                                    gfx::Icon::Lock, false, open, [this] {
                                        LibraryLock::instance().lockNow();
                                        refresh();
                                    }});
-                    out.push_back({"Turn off library lock", "Removes the password and every lock", "", gfx::Icon::Close,
+                    out.push_back({"Turn off library lock", "Removes the code and every lock", "", gfx::Icon::Close,
                                    false, true,
-                                   [this] { LibraryLock::instance().removePassword(guard([this] { refresh(); })); }});
+                                   [this] { LibraryLock::instance().removeCode(guard([this] { refresh(); })); }});
                 }
             }
             out.push_back({"Change server", "Add or pick another Jellyfin server", "", gfx::Icon::Server, false, true,

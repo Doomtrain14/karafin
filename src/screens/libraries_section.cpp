@@ -100,18 +100,19 @@ void LibrariesSection::load() {
 
 void LibrariesSection::bindLibrary(ItemCard& card, const jf::BaseItem& lib) {
     LibraryLock& lock = LibraryLock::instance();
-    const bool locked = lock.hasPassword() && lock.isLocked(lib.id);
-    card.setSubtitle(!locked ? std::string() : lock.blocks(lib.id) ? "Locked" : "Locked - open until you lock again");
-    card.setBadge(locked && lock.blocks(lib.id) ? "Locked" : std::string());
+    const bool locked = lock.hasCode() && lock.isLocked(lib.id);
+    const bool blocked = locked && lock.blocks(lib.id);
+    card.setSubtitle(!locked ? std::string() : blocked ? "Locked" : "Unlocked until you lock it again");
+    card.setBadge(blocked ? "Locked" : std::string());
     card.onOpen = nullptr;
     const bool admin = isAdmin();
-    std::vector<Hint> hints{{Key::X, locked ? "Remove lock" : "Lock"}};
+    std::vector<Hint> hints{{Key::X, locked ? "Lock options" : "Lock"}};
     if (admin) hints.push_back({Key::Y, "Scan library"});
     card.setHints(std::move(hints));
     card.onKey = [this, lib, admin](const InputEvent& e) {
         if (!e.pressed()) return false;
         if (e.button == Key::X) {
-            LibraryLock::instance().toggleLibrary(lib, guard([this] { refreshCards(); }));
+            LibraryLock::instance().libraryActions(lib, guard([this] { refreshCards(); }));
             return true;
         }
         if (e.button == Key::Y && admin) {

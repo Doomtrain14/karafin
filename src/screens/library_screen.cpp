@@ -6,6 +6,7 @@
 #include "core/settings.hpp"
 #include "jellyfin/client.hpp"
 #include "screens/common.hpp"
+#include "screens/library_lock.hpp"
 #include "screens/widgets/item_card.hpp"
 #include "ui/root.hpp"
 #include "ui/widgets/list_menu.hpp"
@@ -45,7 +46,9 @@ LibraryScreen::LibraryScreen(LibrarySpec spec) : spec_(std::move(spec)) {
     subtitle_->setFrame({theme::layout::marginX, 82, 760, 22});
 
     const bool canScan = !spec_.parentId.empty() && isAdmin();
-    const float buttonCount = canScan ? 4.0f : 3.0f;
+    const bool canRelock = !spec_.parentId.empty() && LibraryLock::instance().hasCode() &&
+                           LibraryLock::instance().isLocked(spec_.parentId);
+    const float buttonCount = 3.0f + (canScan ? 1.0f : 0.0f) + (canRelock ? 1.0f : 0.0f);
     const float buttonsW = buttonCount * 48 + (buttonCount - 1) * 12;
     auto* buttons = add<Box>(Axis::Horizontal);
     buttons->setSpacing(12);
@@ -59,6 +62,13 @@ LibraryScreen::LibraryScreen(LibrarySpec spec) : spec_(std::move(spec)) {
     if (canScan) {
         auto* scan = buttons->add<ActionButton>("", gfx::Icon::Refresh, ButtonStyle::Icon, "Scan library");
         scan->onActivate = [this] { scanLibrary(spec_.parentId, spec_.title); };
+    }
+    if (canRelock) {
+        auto* relock = buttons->add<ActionButton>("", gfx::Icon::Lock, ButtonStyle::Icon, "Lock again");
+        relock->onActivate = [id = spec_.parentId] {
+            LibraryLock::instance().relock(id);
+            nav().pop();
+        };
     }
 
     const Vec2 cell = PosterCard(CardShape::Poster).measure({});
