@@ -261,7 +261,19 @@ std::vector<ListItem> SettingsSection::buildItems(Category c) {
                                  "ask", {}, "Uses media segments from the server (10.10+)"));
             out.push_back(choice("Seek step", "player.seek_step",
                                  {{"5 seconds", 5, ""}, {"10 seconds", 10, ""}, {"15 seconds", 15, ""}, {"30 seconds", 30, ""}},
-                                 10));
+                                 10, {}, "D-pad left / right"));
+            out.push_back(choice("Skip amount", "player.skip_seconds",
+                                 {{"5 seconds", 5, ""},
+                                  {"10 seconds", 10, ""},
+                                  {"15 seconds", 15, ""},
+                                  {"30 seconds", 30, ""},
+                                  {"60 seconds", 60, ""}},
+                                 30, {}, "How far each skip jumps"));
+            out.push_back(choice("Skip with", "player.skip_input",
+                                 {{"Buttons and double-tap", "both", "Both ways skip"},
+                                  {"Buttons only", "buttons", "L / R, and ZL / ZR when a video has no chapters"},
+                                  {"Double-tap only", "tap", "Double-tap the left or right side of the screen"}},
+                                 "both", {}, "What skips back or forward during playback"));
             break;
         }
         case Category::Subtitles: {

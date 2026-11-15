@@ -21,7 +21,7 @@ struct Pixmap {
 };
 
 // Decodes JPEG (libjpeg-turbo, with DCT-domain downscaling toward the target), PNG (libpng,
-// streamed and area-averaged toward the target row by row; interlaced PNGs go to stb_image),
+// streamed and area-averaged toward the target row by row, interlaced ones pass by pass),
 // GIF/BMP (stb_image) and WebP (libwebp, scaled while decoding toward the target).
 // `targetWidth/Height` (0 = unknown) only let the decoder skip detail; call fitTo() afterwards for
 // the exact size. Returns straight alpha. Large decodes share a process-wide memory budget (they

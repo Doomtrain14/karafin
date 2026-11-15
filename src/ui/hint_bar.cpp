@@ -97,13 +97,66 @@ void drawButtonGlyph(gfx::Renderer& r, Key b, gfx::Vec2 c, float size, gfx::Colo
 }
 
 void HintBar::setHints(const std::vector<Hint>& hints) {
-    if (sameHints(hints, hints_)) return;
-    previous_ = hints_;
-    hints_ = hints;
+    if (sameHints(hints, current_.hints)) return;
+    Set next{hints, {}, current_.scale};
+    // Labels that survive the change keep their layout; only new ones are measured later.
+    next.labels.resize(hints.size());
+    for (size_t i = 0; i < hints.size(); ++i)
+        for (size_t j = 0; j < current_.hints.size() && j < current_.labels.size(); ++j)
+            if (current_.hints[j].label == hints[i].label) {
+                next.labels[i] = current_.labels[j];
+                break;
+            }
+    previous_ = std::move(current_);
+    current_ = std::move(next);
     fade_ = 0.0f;
 }
 
 void HintBar::update(float dt) { fade_ = std::min(1.0f, fade_ + dt / 0.18f); }
+
+void HintBar::measure(Set& set) {
+    const float scale = gfx::text::displayScale();
+    if (set.scale != scale) {
+        set.labels.clear();
+        set.scale = scale;
+    }
+    set.labels.resize(set.hints.size());
+    for (size_t i = 0; i < set.hints.size(); ++i)
+        if (!set.labels[i]) set.labels[i] = gfx::text::layout(set.hints[i].label, theme::type::caption);
+}
+
+void HintBar::drawSet(gfx::Renderer& r, Set& set, float width, float height, float alpha) {
+    if (alpha <= 0.01f || set.hints.empty()) return;
+    using namespace theme;
+    measure(set);
+    const auto& hints = set.hints;
+    const float glyph = 22;
+    const float cy = height - layout::hintBarHeight * 0.5f - 2;
+    // Too many hints for the bar: tighten the gaps, then drop the trailing (least basic)
+    // ones so nothing runs past the left margin.
+    const float avail = width - layout::marginX * 2;
+    size_t count = hints.size();
+    float gap = 26;
+    auto total = [&](size_t n, float g) {
+        float w = 0;
+        for (size_t i = 0; i < n; ++i) w += set.labels[i]->width + 8 + buttonGlyphWidth(hints[i].button, glyph);
+        return w + g * static_cast<float>(n > 0 ? n - 1 : 0);
+    };
+    if (total(count, gap) > avail) gap = 14;
+    while (count > 1 && total(count, gap) > avail) --count;
+    float x = width - layout::marginX;
+    r.pushAlpha(alpha);
+    for (size_t i = count; i-- > 0;) {
+        const gfx::TextLayout& label = *set.labels[i];
+        x -= label.width;
+        r.drawText(label, {x, cy - label.height * 0.5f}, color::textSecondary);
+        x -= 8;
+        const float gw = buttonGlyphWidth(hints[i].button, glyph);
+        drawButtonGlyph(r, hints[i].button, {x - gw * 0.5f, cy}, glyph, Color::white(0.9f), color::background);
+        x -= gw + gap;
+    }
+    r.popAlpha();
+}
 
 void HintBar::render(gfx::Renderer& r, float width, float height, float visibility) {
     if (visibility <= 0.01f) return;
@@ -112,40 +165,9 @@ void HintBar::render(gfx::Renderer& r, float width, float height, float visibili
     r.pushAlpha(visibility);
     r.fillRect({0, height - barH - 36, width, barH + 36},
                gfx::Gradient::vertical(Color::black(0.0f), Color::black(0.55f)));
-
-    auto drawSet = [&](const std::vector<Hint>& set, float alpha) {
-        if (alpha <= 0.01f || set.empty()) return;
-        const float glyph = 22;
-        const float cy = height - barH * 0.5f - 2;
-        // Too many hints for the bar: tighten the gaps, then drop the trailing (least basic)
-        // ones so nothing runs past the left margin.
-        const float avail = width - layout::marginX * 2;
-        size_t count = set.size();
-        float gap = 26;
-        auto total = [&](size_t n, float g) {
-            float w = 0;
-            for (size_t i = 0; i < n; ++i)
-                w += gfx::text::layout(set[i].label, type::caption)->width + 8 + buttonGlyphWidth(set[i].button, glyph);
-            return w + g * static_cast<float>(n > 0 ? n - 1 : 0);
-        };
-        if (total(count, gap) > avail) gap = 14;
-        while (count > 1 && total(count, gap) > avail) --count;
-        float x = width - layout::marginX;
-        r.pushAlpha(alpha);
-        for (auto it = set.rbegin() + static_cast<std::ptrdiff_t>(set.size() - count); it != set.rend(); ++it) {
-            auto label = gfx::text::layout(it->label, type::caption);
-            x -= label->width;
-            r.drawText(*label, {x, cy - label->height * 0.5f}, color::textSecondary);
-            x -= 8;
-            const float gw = buttonGlyphWidth(it->button, glyph);
-            drawButtonGlyph(r, it->button, {x - gw * 0.5f, cy}, glyph, Color::white(0.9f), color::background);
-            x -= gw + gap;
-        }
-        r.popAlpha();
-    };
     const float e = fade_ * fade_ * (3 - 2 * fade_);
-    drawSet(previous_, 1.0f - e);
-    drawSet(hints_, e);
+    drawSet(r, previous_, width, height, 1.0f - e);
+    drawSet(r, current_, width, height, e);
     r.popAlpha();
 }
 

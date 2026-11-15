@@ -12,6 +12,7 @@
 //
 // Main thread only.
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -161,9 +162,15 @@ public:
     virtual void drawOverlay(Renderer& r) { (void)r; }
 
     // ---- Focus --------------------------------------------------------------------------
-    void setFocusable(bool f) { focusable_ = f; }
+    void setFocusable(bool f) {
+        if (focusable_ != f) ++treeGeneration_;
+        focusable_ = f;
+    }
     bool focusable() const { return focusable_; }
-    void setEnabled(bool e) { enabled_ = e; }
+    void setEnabled(bool e) {
+        if (enabled_ != e) ++treeGeneration_;
+        enabled_ = e;
+    }
     bool enabled() const { return enabled_; }
     virtual bool canFocus() const { return focusable_ && enabled_ && visibleInTree(); }
     bool focused() const { return focused_; }
@@ -233,6 +240,10 @@ private:
     void setParent(View* p) { parent_ = p; }
     void markSubtreeDirty();
     void sortedByZ(std::vector<View*>& out) const;
+
+    // Bumped whenever any view is added, removed, destroyed, or changes visible / focusable /
+    // enabled, i.e. whenever the set of focusable views can change. Main thread only.
+    inline static uint64_t treeGeneration_ = 1;
 
     std::shared_ptr<char> alive_;
     View* parent_ = nullptr;

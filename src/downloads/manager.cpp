@@ -200,16 +200,24 @@ void DownloadManager::Impl::startLocked() {
     ioOpts.stackSize = 256 * 1024;
     ioOpts.priority = kPriorityBackground;
     ioThread = Thread(std::move(ioOpts), [this] { ioLoop(); });
-    for (int i = 0; i < DownloadManager::kMaxConcurrency; ++i) {
+    ensureSlotsLocked();
+    log::info(kTag, "started (concurrency {}, auto-resume {})", concurrencySetting(),
+              Settings::instance().get("downloads.auto_resume", false));
+    cv.notify_all();
+}
+
+void DownloadManager::Impl::ensureSlotsLocked() {
+    // Threads are only added: after the setting is lowered the extra ones stay parked in
+    // slotLoop, which never runs more than concurrencySetting() jobs at once.
+    if (!started || stopping) return;
+    const auto wanted = static_cast<size_t>(concurrencySetting());
+    while (slots.size() < wanted) {
         ThreadOptions opts;
-        opts.name = "dl-" + std::to_string(i + 1);
+        opts.name = "dl-" + std::to_string(slots.size() + 1);
         opts.stackSize = 512 * 1024;  // mbedtls handshakes + JSON parsing
         opts.priority = kPriorityIo;
         slots.emplace_back(std::move(opts), [this] { slotLoop(); });
     }
-    log::info(kTag, "started (concurrency {}, auto-resume {})", concurrencySetting(),
-              Settings::instance().get("downloads.auto_resume", false));
-    cv.notify_all();
 }
 
 void DownloadManager::Impl::markDirty(bool urgent) {
@@ -345,11 +353,38 @@ DownloadInfo DownloadManager::Impl::snapshot(const Task& t) const {
 
 void DownloadManager::Impl::emit(EventType type, const Task& t) { emitInfo(type, snapshot(t)); }
 
+// Usually called with `mutex` held, so it must not block on the main queue. Events are buffered
+// and delivered by a single outstanding flush task; a newer Progress event replaces a pending one
+// for the same download, so the buffer stays bounded by the number of downloads and state changes.
 void DownloadManager::Impl::emitInfo(EventType type, DownloadInfo info) {
     Event ev;
     ev.type = type;
     ev.info = std::move(info);
-    main_thread::post([this, ev = std::move(ev)] { dispatch(ev); });
+    std::lock_guard lock(eventMutex);
+    if (type == EventType::Progress) {
+        for (auto it = pendingEvents.rbegin(); it != pendingEvents.rend(); ++it) {
+            if (it->info.key != ev.info.key) continue;
+            if (it->type == EventType::Progress) {
+                *it = std::move(ev);
+                return;
+            }
+            break;
+        }
+    }
+    pendingEvents.push_back(std::move(ev));
+    if (eventFlushPosted) return;
+    eventFlushPosted = true;
+    main_thread::postNoWait([this] { flushEvents(); });
+}
+
+void DownloadManager::Impl::flushEvents() {
+    std::vector<Event> batch;
+    {
+        std::lock_guard lock(eventMutex);
+        batch.swap(pendingEvents);
+        eventFlushPosted = false;
+    }
+    for (const auto& ev : batch) dispatch(ev);
 }
 
 void DownloadManager::Impl::dispatch(const Event& ev) {
@@ -736,6 +771,7 @@ int DownloadManager::removeWatched() {
 void DownloadManager::setConcurrency(int n) {
     Settings::instance().set("downloads.concurrency", std::clamp(n, 1, DownloadManager::kMaxConcurrency));
     std::lock_guard lock(impl_->mutex);
+    impl_->ensureSlotsLocked();
     impl_->cv.notify_all();
 }
 

@@ -13,6 +13,55 @@ void collectFocusable(View* v, std::vector<View*>& out) {
     for (auto& c : v->children()) collectFocusable(c.get(), out);
 }
 
+View* nearestInDirection(const std::vector<View*>& candidates, View* from, NavDir dir) {
+    const Rect cur = from->rootRect();
+    const Vec2 cc = cur.center();
+    View* best = nullptr;
+    float bestScore = std::numeric_limits<float>::max();
+    for (View* v : candidates) {
+        if (v == from || v->isDescendantOf(from) || from->isDescendantOf(v)) continue;
+        const Rect r = v->rootRect();
+        const Vec2 rc = r.center();
+        float major = 0, minor = 0, overlap = 0;
+        bool ok = false;
+        switch (dir) {
+            case NavDir::Right:
+                ok = rc.x > cc.x + 1 && r.right() > cur.right() - 1;
+                major = std::max(0.0f, r.x - cur.right());
+                minor = std::fabs(rc.y - cc.y);
+                overlap = std::min(cur.bottom(), r.bottom()) - std::max(cur.y, r.y);
+                break;
+            case NavDir::Left:
+                ok = rc.x < cc.x - 1 && r.x < cur.x + 1;
+                major = std::max(0.0f, cur.x - r.right());
+                minor = std::fabs(rc.y - cc.y);
+                overlap = std::min(cur.bottom(), r.bottom()) - std::max(cur.y, r.y);
+                break;
+            case NavDir::Down:
+                ok = rc.y > cc.y + 1 && r.bottom() > cur.bottom() - 1;
+                major = std::max(0.0f, r.y - cur.bottom());
+                minor = std::fabs(rc.x - cc.x);
+                overlap = std::min(cur.right(), r.right()) - std::max(cur.x, r.x);
+                break;
+            case NavDir::Up:
+                ok = rc.y < cc.y - 1 && r.y < cur.y + 1;
+                major = std::max(0.0f, cur.y - r.bottom());
+                minor = std::fabs(rc.x - cc.x);
+                overlap = std::min(cur.right(), r.right()) - std::max(cur.x, r.x);
+                break;
+        }
+        if (!ok) continue;
+        const bool inBeam = overlap > 0;
+        // Items sharing the beam win unless much farther; off-beam items pay for misalignment.
+        const float score = major + minor * (inBeam ? 0.6f : 2.5f) + (inBeam ? 0.0f : 40.0f);
+        if (score < bestScore) {
+            bestScore = score;
+            best = v;
+        }
+    }
+    return best;
+}
+
 }  // namespace
 
 View* FocusManager::resolve(View* v) const {
@@ -95,7 +144,7 @@ bool FocusManager::navigate(NavDir dir) {
         }
         if (p == scope) break;
     }
-    View* t = findInDirection(scope, from, dir);
+    View* t = nearestInDirection(focusables(scope), from, dir);
     if (!t) return false;
     t = redirectToMemory(t, from);
     apply(t);
@@ -126,56 +175,21 @@ void FocusManager::clear() {
     scope_.reset();
 }
 
+const std::vector<View*>& FocusManager::focusables(View* scope) {
+    if (scope != focusablesScope_ || focusablesGeneration_ != View::treeGeneration_) {
+        focusables_.clear();
+        collectFocusable(scope, focusables_);
+        focusablesScope_ = scope;
+        focusablesGeneration_ = View::treeGeneration_;
+    }
+    return focusables_;
+}
+
 View* FocusManager::findInDirection(View* scope, View* from, NavDir dir) {
     if (!scope || !from) return nullptr;
     std::vector<View*> candidates;
     collectFocusable(scope, candidates);
-    const Rect cur = from->rootRect();
-    const Vec2 cc = cur.center();
-    View* best = nullptr;
-    float bestScore = std::numeric_limits<float>::max();
-    for (View* v : candidates) {
-        if (v == from || v->isDescendantOf(from) || from->isDescendantOf(v)) continue;
-        const Rect r = v->rootRect();
-        const Vec2 rc = r.center();
-        float major = 0, minor = 0, overlap = 0;
-        bool ok = false;
-        switch (dir) {
-            case NavDir::Right:
-                ok = rc.x > cc.x + 1 && r.right() > cur.right() - 1;
-                major = std::max(0.0f, r.x - cur.right());
-                minor = std::fabs(rc.y - cc.y);
-                overlap = std::min(cur.bottom(), r.bottom()) - std::max(cur.y, r.y);
-                break;
-            case NavDir::Left:
-                ok = rc.x < cc.x - 1 && r.x < cur.x + 1;
-                major = std::max(0.0f, cur.x - r.right());
-                minor = std::fabs(rc.y - cc.y);
-                overlap = std::min(cur.bottom(), r.bottom()) - std::max(cur.y, r.y);
-                break;
-            case NavDir::Down:
-                ok = rc.y > cc.y + 1 && r.bottom() > cur.bottom() - 1;
-                major = std::max(0.0f, r.y - cur.bottom());
-                minor = std::fabs(rc.x - cc.x);
-                overlap = std::min(cur.right(), r.right()) - std::max(cur.x, r.x);
-                break;
-            case NavDir::Up:
-                ok = rc.y < cc.y - 1 && r.y < cur.y + 1;
-                major = std::max(0.0f, cur.y - r.bottom());
-                minor = std::fabs(rc.x - cc.x);
-                overlap = std::min(cur.right(), r.right()) - std::max(cur.x, r.x);
-                break;
-        }
-        if (!ok) continue;
-        const bool inBeam = overlap > 0;
-        // Items sharing the beam win unless much farther; off-beam items pay for misalignment.
-        const float score = major + minor * (inBeam ? 0.6f : 2.5f) + (inBeam ? 0.0f : 40.0f);
-        if (score < bestScore) {
-            bestScore = score;
-            best = v;
-        }
-    }
-    return best;
+    return nearestInDirection(candidates, from, dir);
 }
 
 }  // namespace karafin::ui

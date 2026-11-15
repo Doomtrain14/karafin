@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(karafin VERSION 1.0.2 LANGUAGES C CXX)
+project(karafin VERSION 1.0.3 LANGUAGES C CXX)
 
 if(NOT NINTENDO_SWITCH)
     message(FATAL_ERROR "Karafin targets Nintendo Switch only. Configure with "

@@ -9,7 +9,7 @@ namespace karafin::ui {
 
 using gfx::Renderer;
 
-// "87%" with a small battery glyph, drawn right-aligned. Polls psm and the `ui.show_battery`
+// "87%" with a small battery glyph (and a bolt while charging), drawn right-aligned. Polls psm and the `ui.show_battery`
 // setting every few seconds rather than every frame.
 class BatteryIndicator {
 public:

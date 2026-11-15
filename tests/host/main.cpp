@@ -1,10 +1,14 @@
 // Host-side runner for Jellyfin, downloads and playback-control pure-logic tests.
 // Built and run by tools/host-tests.ps1 inside a Linux GCC container; see tests/host/run.sh.
 
+#include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cmath>
 #include <limits>
 #include <string>
+#include <thread>
 
 #include "core/log.hpp"
 #include "core/main_queue.hpp"
@@ -113,8 +117,16 @@ bool downloadConcurrencyTest() {
     downloads::DownloadManager::instance().setConcurrency(5);
     ok &= downloads::DownloadManager::instance().concurrency() == 4;
     {
+        // Threads follow the setting: two at start, more once it is raised, none removed after.
         std::lock_guard lock(manager.mutex);
+        settings.set("downloads.concurrency", 2);
         manager.startLocked();
+        ok &= manager.slots.size() == 2;
+        settings.set("downloads.concurrency", 4);
+        manager.ensureSlotsLocked();
+        ok &= manager.slots.size() == 4;
+        settings.set("downloads.concurrency", 1);
+        manager.ensureSlotsLocked();
         ok &= manager.slots.size() == 4;
         manager.stopping = true;
         manager.cv.notify_all();
@@ -127,6 +139,64 @@ bool downloadConcurrencyTest() {
     }
     manager.ioThread.join();
     settings.set("downloads.concurrency", 1);
+    return ok;
+}
+
+// Must run last: it closes the main queue.
+bool mainQueueBoundTest(std::string& report) {
+    using namespace std::chrono_literals;
+    using Clock = std::chrono::steady_clock;
+    auto check = [&](bool ok, const char* message) {
+        if (!ok) report += std::string(message) + "; ";
+        return ok;
+    };
+    auto waitFor = [](auto&& done) {
+        const auto until = Clock::now() + 5s;
+        while (!done() && Clock::now() < until) std::this_thread::sleep_for(1ms);
+        std::this_thread::sleep_for(50ms);
+    };
+    main_thread::runPending(1000);
+    bool ok = check(main_thread::pendingCount() == 0, "queue starts empty");
+
+    constexpr int kTasks = 1500;
+    std::atomic<int> posted{0};
+    int ran = 0;
+    std::thread producer([&] {
+        for (int i = 0; i < kTasks; ++i) {
+            main_thread::post([&ran] { ++ran; });
+            posted.fetch_add(1);
+        }
+    });
+    waitFor([&] { return posted.load() >= 1024; });
+    ok &= check(posted.load() == 1024 && main_thread::pendingCount() == 1024, "producer blocks at 1024 pending");
+    size_t maxPending = 0;
+    const auto until = Clock::now() + 5s;
+    while (ran < kTasks && Clock::now() < until) {
+        maxPending = std::max(maxPending, main_thread::pendingCount());
+        main_thread::runPending(1);
+    }
+    if (ran < kTasks) main_thread::close();
+    producer.join();
+    ok &= check(ran == kTasks, "every blocked post runs once drained");
+    ok &= check(maxPending <= 1024, "queue never exceeds 1024 posts from other threads");
+
+    std::atomic<bool> filled{false};
+    std::thread filler([&] {
+        for (int i = 0; i < 1025; ++i) main_thread::post([] {});
+        filled.store(true);
+    });
+    waitFor([] { return main_thread::pendingCount() >= 1024; });
+    ok &= check(!filled.load() && main_thread::pendingCount() == 1024, "1025th post waits");
+    main_thread::post([] {});
+    main_thread::postNoWait([] {});
+    ok &= check(main_thread::pendingCount() == 1026, "main thread and postNoWait bypass the bound");
+    main_thread::close();
+    filler.join();
+    ok &= check(filled.load() && main_thread::pendingCount() == 1026, "close wakes and drops blocked posts");
+    main_thread::post([] {});
+    ok &= check(main_thread::pendingCount() == 1026, "posts after close are dropped");
+    main_thread::clear();
+    if (ok) report = "1024 cap, blocking producers, main-thread bypass and close";
     return ok;
 }
 
@@ -148,6 +218,8 @@ int main() {
     const bool playbackOk = playbackControlsTest(playback);
     const bool concurrencyOk = downloadConcurrencyTest();
     main_thread::runPending(1000);
+    std::string queue;
+    const bool queueOk = mainQueueBoundTest(queue);
 
     pool.shutdown();
     detail::setGlobalWorkers(nullptr);
@@ -157,5 +229,6 @@ int main() {
     std::printf("downloads::selfTest %s  %s\n", dlOk ? "PASS" : "FAIL", dl.c_str());
     std::printf("playback controls   %s  %s\n", playbackOk ? "PASS" : "FAIL", playback.c_str());
     std::printf("download workers    %s  1-4 settings, bounds and four live worker slots\n", concurrencyOk ? "PASS" : "FAIL");
-    return jfOk && dlOk && playbackOk && concurrencyOk ? 0 : 1;
+    std::printf("main queue          %s  %s\n", queueOk ? "PASS" : "FAIL", queue.c_str());
+    return jfOk && dlOk && playbackOk && concurrencyOk && queueOk ? 0 : 1;
 }

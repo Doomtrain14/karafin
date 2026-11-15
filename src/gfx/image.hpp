@@ -41,7 +41,7 @@ struct ImageRequest {
     int width = 0;                   // target box in framebuffer pixels (0 = keep source size)
     int height = 0;
     ImageFit fit = ImageFit::Cover;  // how the target box is filled (decides the decode size)
-    float blur = 0.0f;               // gaussian sigma in output pixels (backdrops)
+    float blur = 0.0f;               // gaussian sigma in target px (backdrops); texture is then up to 4x smaller
     bool diskCache = true;
     std::string cacheKey;            // stable identity instead of the url (e.g. itemId + imageTag)
 };

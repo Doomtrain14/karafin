@@ -151,6 +151,8 @@ private:
 
     // Segments / up next.
     void updateSegments(float dt);
+    void findActiveSegment(bool eligible, bool upNextOwnsCredits);
+    void invalidateSegmentWindow() { segmentCheckFrom_ = 1, segmentCheckUntil_ = 0; }
     void skipActiveSegment();
     void updateUpNext(float dt);
     // `finishedCurrent`: the current item counts as watched (credits / up-next / end).
@@ -169,6 +171,7 @@ private:
     void drawBottomBar(ui::Renderer& r, float a);
     void drawSeekPreview(ui::Renderer& r, float a);
     void drawCenter(ui::Renderer& r);
+    void drawTapSeek(ui::Renderer& r);
     void drawSkipButton(ui::Renderer& r);
     void drawUpNext(ui::Renderer& r);
     void drawError(ui::Renderer& r);
@@ -229,6 +232,9 @@ private:
     std::string skipMode_ = "ask";
     bool autoplayNext_ = true;
     double seekStep_ = 10;
+    double skipSeconds_ = 30;  // L / R and double-tap
+    bool buttonSkip_ = true;   // L / R, and ZL / ZR without chapters
+    bool doubleTapSeek_ = true;
 
     // Stream recovery.
     bool recovering_ = false;  // waiting for the network
@@ -311,9 +317,22 @@ private:
     CachedText adjustmentText_;
     ui::Animated<float> flash_{0.0f};
     gfx::Icon flashIcon_ = gfx::Icon::Play;
+    // Double-tap seek: the last tap, and the "-30 s" / "+30 s" badge on that side.
+    double lastTapAt_ = -1;
+    int lastTapSide_ = 0;     // -1 left, 1 right, 0 middle
+    bool osdBeforeTap_ = false;
+    double tapSeekTotal_ = 0;  // accumulated by consecutive taps
+    int tapSeekSide_ = 0;
+    ui::Animated<float> tapSeekAppear_{0.0f};
+    CachedText tapSeekText_;
     bool showInfo_ = false;
     double infoTimer_ = 0;
+    double infoStaticAge_ = 0;  // the stream description is re-read on change or every few seconds
+    bool infoStaticDirty_ = true;
+    std::vector<std::pair<std::string, std::string>> infoStatic_;
     struct InfoLine {
+        std::string keyText;
+        std::string valueText;
         gfx::TextLayoutPtr key;
         gfx::TextLayoutPtr value;
     };
@@ -337,6 +356,9 @@ private:
     ui::BatteryIndicator battery_;
     std::string endsText_;
     double clockNext_ = 0;
+    int64_t clockMinute_ = -1, endsMinute_ = -1;  // minutes since the epoch currently shown
+    double clockWall_ = 0, clockWallAt_ = -1;      // wall clock sampled at ui::now() == clockWallAt_
+    double volume_ = 100;  // observed, so a swipe never queries mpv
 
     // OSD text, re-laid out only on change.
     CachedText titleText_, subtitleText_, clockLayout_, endsLayout_, chapterText_;
@@ -362,6 +384,12 @@ private:
     std::string skipLabel_;  // kept while the button fades out
     double segmentShownFor_ = 0;
     ui::Animated<float> skipAppear_{0.0f};
+    // The active segment can only change when the position leaves [from, until) or the
+    // eligibility key changes; until then the per-frame scan is skipped.
+    double segmentCheckFrom_ = 1, segmentCheckUntil_ = 0;
+    unsigned segmentStateKey_ = ~0u;
+    double upNextTrigger_ = -1;
+    double upNextTriggerFor_ = -1;  // duration the trigger was computed for
 
     // Up next.
     std::optional<NextUp> next_;

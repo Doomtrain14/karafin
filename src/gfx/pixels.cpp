@@ -31,8 +31,8 @@ void jpegSilence(j_common_ptr) {}
 
 // A damaged header (e.g. a cache file cut short by a crash) can claim up to 65535x65535 pixels;
 // refuse anything above 64 MiB of RGBA instead of trying to allocate it. Decoders that scale while
-// decoding (JPEG, lossy WebP, non-interlaced PNG) accept that much source; the ones that always
-// materialize the full image (stb_image, lossless WebP) get a lower cap (fits a 3840x2160 original).
+// decoding (JPEG, lossy WebP, PNG) accept that much source; the ones that always materialize the
+// full image (stb_image for GIF/BMP, lossless WebP) get a lower cap (fits a 3840x2160 original).
 constexpr int64_t kMaxPixels = 4096LL * 4096;
 constexpr int64_t kMaxFullDecodePixels = 3072LL * 3072;
 
@@ -286,14 +286,11 @@ void scaledDecodeSize(int w, int h, int tw, int th, ImageFit fit, int& ow, int& 
 }
 
 // ---- PNG: streamed through libpng a row at a time and area-averaged straight into the output
-// size, so a large PNG never exists at full resolution in memory.
+// size, so a large PNG never exists at full resolution in memory. Interlaced (Adam7) files are
+// read pass by pass; every source pixel appears in exactly one pass, so each is added to the
+// output pixels it covers as it arrives.
 
 bool isPng(std::string_view b) { return b.size() > 8 && std::memcmp(b.data(), "\x89PNG\r\n\x1a\n", 8) == 0; }
-
-// Adam7 rows are only final after the last pass, which needs the whole image; those go to stb.
-bool isInterlacedPng(std::string_view b) {
-    return b.size() > 28 && b.substr(12, 4) == "IHDR" && static_cast<uint8_t>(b[28]) != 0;
-}
 
 struct PngSource {
     const uint8_t* data;
@@ -318,9 +315,11 @@ struct PngStream {
     png_infop info = nullptr;
     PngSource src;
     int w = 0, h = 0, ow = 0, oh = 0;
+    bool interlaced = false;
     std::vector<uint8_t> row;  // one source row, RGBA
     std::vector<float> hrow;   // that row resampled to ow, premultiplied
-    std::vector<float> acc;    // two output rows being accumulated (consecutive rows share at most one source row)
+    std::vector<float> acc;    // two output rows being accumulated (consecutive rows share at most one source row);
+                               // the whole output when interlaced
     std::vector<Contrib> cx, cy;
     Pixmap out;
 
@@ -341,7 +340,9 @@ bool pngHeaderSteps(PngStream* s) {
     png_uint_32 w = 0, h = 0;
     int depth = 0, color = 0, interlace = 0;
     png_get_IHDR(s->png, s->info, &w, &h, &depth, &color, &interlace, nullptr, nullptr);
-    if (interlace != PNG_INTERLACE_NONE || !sizeAllowed(w, h)) return false;
+    if (!sizeAllowed(w, h)) return false;
+    // No png_set_interlace_handling(): Adam7 passes are read as their own reduced images.
+    s->interlaced = interlace != PNG_INTERLACE_NONE;
     const bool trns = png_get_valid(s->png, s->info, PNG_INFO_tRNS) != 0;
     if (color == PNG_COLOR_TYPE_PALETTE) png_set_palette_to_rgb(s->png);
     if (color == PNG_COLOR_TYPE_GRAY && depth < 8) png_set_expand_gray_1_2_4_to_8(s->png);
@@ -409,26 +410,75 @@ bool pngRowSteps(PngStream* s) {
     return emit == oh;
 }
 
+// Weight of source index `src` in output index `o`, or 0 when it is outside its footprint.
+float contribWeight(const std::vector<Contrib>& cs, int o, int src) {
+    const Contrib& c = cs[static_cast<size_t>(o)];
+    const int t = src - c.start;
+    return t >= 0 && t < static_cast<int>(c.weights.size()) ? c.weights[static_cast<size_t>(t)] : 0.0f;
+}
+
+bool pngInterlacedSteps(PngStream* s) {
+    const int w = s->w, h = s->h, ow = s->ow, oh = s->oh;
+    const size_t stride = static_cast<size_t>(ow) * 4;
+    for (int pass = 0; pass < 7; ++pass) {
+        const int cols = static_cast<int>(PNG_PASS_COLS(static_cast<png_uint_32>(w), pass));
+        const int rows = static_cast<int>(PNG_PASS_ROWS(static_cast<png_uint_32>(h), pass));
+        if (cols == 0 || rows == 0) continue;  // libpng skips empty passes too
+        for (int r = 0; r < rows; ++r) {
+            uint8_t* src = s->row.data();
+            png_read_row(s->png, src, nullptr);
+            premultiplyRaw(src, rgbaBytes(cols, 1));
+            const int y = static_cast<int>(PNG_ROW_FROM_PASS_ROW(static_cast<png_uint_32>(r), pass));
+            // Shrinking only: a source pixel falls in the output pixel at its scaled position or a
+            // neighbour of it.
+            const int ly = static_cast<int>(static_cast<int64_t>(y) * oh / h);
+            for (int oy = std::max(0, ly - 1); oy <= std::min(oh - 1, ly + 1); ++oy) {
+                const float wy = contribWeight(s->cy, oy, y);
+                if (wy == 0) continue;
+                float* acc = s->acc.data() + static_cast<size_t>(oy) * stride;
+                for (int i = 0; i < cols; ++i) {
+                    const int x = static_cast<int>(PNG_COL_FROM_PASS_COL(static_cast<png_uint_32>(i), pass));
+                    const int lx = static_cast<int>(static_cast<int64_t>(x) * ow / w);
+                    const uint8_t* p = src + static_cast<size_t>(i) * 4;
+                    for (int ox = std::max(0, lx - 1); ox <= std::min(ow - 1, lx + 1); ++ox) {
+                        const float wt = contribWeight(s->cx, ox, x) * wy;
+                        if (wt == 0) continue;
+                        float* a = acc + static_cast<size_t>(ox) * 4;
+                        for (int ch = 0; ch < 4; ++ch) a[ch] += p[ch] * wt;
+                    }
+                }
+            }
+        }
+    }
+    uint8_t* out = s->out.rgba.data();
+    for (size_t i = 0; i < s->acc.size(); ++i) out[i] = static_cast<uint8_t>(std::clamp(s->acc[i] + 0.5f, 0.0f, 255.0f));
+    return true;
+}
+
 bool pngReadRows(PngStream* s) {
     if (setjmp(png_jmpbuf(s->png))) return false;
-    return pngRowSteps(s);
+    return s->interlaced ? pngInterlacedSteps(s) : pngRowSteps(s);
+}
+
+std::vector<Contrib> identityContributions(int len) {
+    std::vector<Contrib> out(static_cast<size_t>(len));
+    for (int i = 0; i < len; ++i) out[static_cast<size_t>(i)] = {i, {1.0f}};
+    return out;
 }
 
 std::optional<Pixmap> decodePngStreamed(const uint8_t* data, size_t size, int tw, int th, ImageFit fit, bool fitted) {
     PngStream s(data, size);
     if (!pngReadHeader(&s)) return std::nullopt;
     scaledDecodeSize(s.w, s.h, tw, th, fit, s.ow, s.oh);
-    DecodeReservation reserve(rgbaBytes(s.ow, s.oh));
+    // Interlaced files accumulate the whole output as floats (4x the output size).
+    const size_t accFloats = s.interlaced ? rgbaBytes(s.ow, s.oh) : static_cast<size_t>(s.ow) * 8;
+    DecodeReservation reserve(rgbaBytes(s.ow, s.oh) + accFloats * sizeof(float));
     s.row.resize(rgbaBytes(s.w, 1));
     s.hrow.resize(static_cast<size_t>(s.ow) * 4);
-    s.acc.assign(static_cast<size_t>(s.ow) * 8, 0.0f);
+    s.acc.assign(accFloats, 0.0f);
     if (s.ow != s.w) s.cx = contributions(s.w, s.ow);
-    if (s.oh != s.h) {
-        s.cy = contributions(s.h, s.oh);
-    } else {
-        s.cy.resize(static_cast<size_t>(s.oh));
-        for (int y = 0; y < s.oh; ++y) s.cy[static_cast<size_t>(y)] = {y, {1.0f}};
-    }
+    else if (s.interlaced) s.cx = identityContributions(s.w);
+    s.cy = s.oh != s.h ? contributions(s.h, s.oh) : identityContributions(s.oh);
     s.out.width = s.ow;
     s.out.height = s.oh;
     s.out.rgba.resize(rgbaBytes(s.ow, s.oh));
@@ -519,11 +569,12 @@ std::optional<Pixmap> decodeImpl(std::string_view bytes, int targetWidth, int ta
         return finishDecode(buf.data(), ow, oh, &buf, targetWidth, targetHeight, fit, fitted);
     }
 
-    if (isPng(bytes) && !isInterlacedPng(bytes))
-        return decodePngStreamed(data, bytes.size(), targetWidth, targetHeight, fit, fitted);
+    if (isPng(bytes)) return decodePngStreamed(data, bytes.size(), targetWidth, targetHeight, fit, fitted);
 
-    // stb_image (interlaced PNG, GIF, BMP) cannot decode at a reduced size: hold a reservation for
-    // the full image plus its intermediate buffers until the result has been resampled.
+    // stb_image (GIF, BMP) cannot decode at a reduced size: hold a reservation for the full image
+    // plus its intermediate buffers until the result has been resampled. Jellyfin re-encodes the
+    // images Karafin requests (format=Jpg/Png with maxWidth), so these only come from unusual
+    // servers or proxies; kMaxFullDecodePixels caps them.
     int w = 0, h = 0, n = 0;
     if (!stbi_info_from_memory(data, static_cast<int>(bytes.size()), &w, &h, &n) ||
         !sizeAllowed(w, h, kMaxFullDecodePixels))

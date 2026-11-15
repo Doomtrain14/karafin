@@ -23,8 +23,17 @@ public:
     void render(gfx::Renderer& r, float width, float height, float visibility);
 
 private:
-    std::vector<Hint> hints_;
-    std::vector<Hint> previous_;
+    // Hints plus their measured labels, kept until the hints or the display scale change.
+    struct Set {
+        std::vector<Hint> hints;
+        std::vector<gfx::TextLayoutPtr> labels;
+        float scale = 0;
+    };
+    static void measure(Set& set);
+    void drawSet(gfx::Renderer& r, Set& set, float width, float height, float alpha);
+
+    Set current_;
+    Set previous_;
     float fade_ = 1.0f;  // crossfade progress when hints change
 };
 

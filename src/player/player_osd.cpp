@@ -44,16 +44,20 @@ int64_t timeKey(double seconds) {
     return static_cast<int64_t>(seconds + 0.5);
 }
 
-// Local wall-clock time `offset` seconds from now, "HH:MM".
-std::string clockAt(double offset) {
+// Seconds since the epoch on the local system clock.
+double wallClock() {
     u64 now = 0;
-    if (R_SUCCEEDED(timeGetCurrentTime(TimeType_LocalSystemClock, &now))) {
-        TimeCalendarTime cal{};
-        TimeCalendarAdditionalInfo info{};
-        if (R_SUCCEEDED(timeToCalendarTimeWithMyRule(now + static_cast<u64>(std::max(0.0, offset)), &cal, &info)))
-            return std::format("{:02}:{:02}", cal.hour, cal.minute);
-    }
-    const std::time_t t = std::time(nullptr) + static_cast<std::time_t>(std::max(0.0, offset));
+    if (R_SUCCEEDED(timeGetCurrentTime(TimeType_LocalSystemClock, &now))) return static_cast<double>(now);
+    return static_cast<double>(std::time(nullptr));
+}
+
+// "HH:MM" for a local-clock timestamp.
+std::string formatClock(int64_t epoch) {
+    TimeCalendarTime cal{};
+    TimeCalendarAdditionalInfo info{};
+    if (R_SUCCEEDED(timeToCalendarTimeWithMyRule(static_cast<u64>(std::max<int64_t>(0, epoch)), &cal, &info)))
+        return std::format("{:02}:{:02}", cal.hour, cal.minute);
+    const std::time_t t = static_cast<std::time_t>(epoch);
     std::tm lt{};
     localtime_r(&t, &lt);
     return std::format("{:02}:{:02}", lt.tm_hour, lt.tm_min);
@@ -85,9 +89,29 @@ void PlayerScreen::updateClock() {
     const double now = ui::now();
     if (now < clockNext_ && !clockText_.empty()) return;
     clockNext_ = now + 1.0;
-    clockText_ = clockAt(0);
-    const double remaining = (duration_ - displayPosition()) / std::max(0.25, speed_);
-    endsText_ = duration_ > 0 && fileLoaded_ ? "Ends at " + clockAt(std::max(0.0, remaining)) : "";
+    // Sample the system clock once a minute and extrapolate in between; the texts are only
+    // reformatted when the minute they show changes.
+    if (clockWallAt_ < 0 || now - clockWallAt_ >= 60.0 || now < clockWallAt_) {
+        clockWall_ = wallClock();
+        clockWallAt_ = now;
+    }
+    const double wall = clockWall_ + (now - clockWallAt_);
+    const auto minute = static_cast<int64_t>(std::floor(wall / 60.0));
+    if (minute != clockMinute_ || clockText_.empty()) {
+        clockMinute_ = minute;
+        clockText_ = formatClock(minute * 60);
+    }
+    if (duration_ > 0 && fileLoaded_) {
+        const double remaining = std::max(0.0, (duration_ - displayPosition()) / std::max(0.25, speed_));
+        const auto ends = static_cast<int64_t>(std::floor((wall + remaining) / 60.0));
+        if (ends != endsMinute_ || endsText_.empty()) {
+            endsMinute_ = ends;
+            endsText_ = "Ends at " + formatClock(ends * 60);
+        }
+    } else if (!endsText_.empty()) {
+        endsMinute_ = -1;
+        endsText_.clear();
+    }
 }
 
 Rect PlayerScreen::seekBarRect() const { return {kMargin, kBarY, theme::layout::screenWidth - kMargin * 2, 5}; }
@@ -161,14 +185,12 @@ bool PlayerScreen::onTouchEvent(const SDL_Event& e) {
                         }
                         swipeInitial_ = *value;
                     } else {
-                        const auto value = mpv_ ? mpv_->getDouble("volume") : std::nullopt;
-                        if (!value || !std::isfinite(*value)) {
-                            log::warn("player", "cannot read playback volume");
+                        if (!mpv_ || !std::isfinite(volume_)) {
                             ui::toast("Unable to adjust playback volume", ui::ToastKind::Warning);
                             swipe_.cancel();
                             return true;
                         }
-                        swipeInitial_ = PlaybackSwipe::volumeFraction(*value);
+                        swipeInitial_ = PlaybackSwipe::volumeFraction(volume_);
                     }
                 }
                 const float value = swipe_.value(p.y, swipeInitial_, brightness ? 0.05f : 0.0f);
@@ -181,6 +203,7 @@ bool PlayerScreen::onTouchEvent(const SDL_Event& e) {
                         ok = brightness_.set(value);
                     } else if (mpv_) {
                         int rc = mpv_->setDouble("volume", percent);
+                        if (rc >= 0) volume_ = percent;
                         if (rc >= 0 && percent > 0) rc = mpv_->setFlag("mute", false);
                         ok = rc >= 0;
                         if (!ok) log::warn("player", "cannot adjust volume: {}", mpv_error_string(rc));
@@ -237,24 +260,68 @@ void PlayerScreen::runHit(HitAction action) {
 bool PlayerScreen::onTap(Vec2 local) {
     for (auto it = hits_.rbegin(); it != hits_.rend(); ++it) {
         if (it->rect.contains(local)) {
+            lastTapAt_ = -1;
             runHit(it->action);
             return true;
         }
     }
     if (phase_ == Phase::Error) return true;
+    const Rect bar = seekBarRect();
+    const Rect barZone{bar.x - 16, bar.y - 26, bar.w + 32, bar.h + 52};
+    const bool onBar = osdVisible() && barZone.contains(local) && fileLoaded_ && duration_ > 0;
+    if (onBar) {
+        lastTapAt_ = -1;
+        seekAbsolute(positionFromX(local.x));
+        showOsd(3.0);
+        return true;
+    }
+
+    const float third = theme::layout::screenWidth / 3.0f;
+    const int side = local.x < third ? -1 : local.x > third * 2 ? 1 : 0;
+    const double now = ui::now();
+    if (doubleTapSeek_ && side != 0 && fileLoaded_ && duration_ > 0 && phase_ == Phase::Playing &&
+        side == lastTapSide_ && now - lastTapAt_ < 0.35) {
+        // Second tap on the same side: undo the first tap's OSD toggle and seek instead.
+        // Further quick taps keep adding to the jump.
+        lastTapAt_ = now;
+        if (osdBeforeTap_) showOsd(4.0);
+        else hideOsd();
+        const bool continuing = tapSeekSide_ == side && tapSeekAppear_.value() > 0.05f;
+        tapSeekTotal_ = (continuing ? tapSeekTotal_ : 0.0) + skipSeconds_;
+        tapSeekSide_ = side;
+        tapSeekAppear_.set(1.0f);
+        tapSeekAppear_.tweenTo(0.0f, 1.1f, ui::ease::inCubic);
+        seekAbsolute(displayPosition() + side * skipSeconds_);
+        return true;
+    }
+    lastTapAt_ = now;
+    lastTapSide_ = side;
+    osdBeforeTap_ = osdVisible();
+
     if (osdVisible()) {
-        const Rect bar = seekBarRect();
-        const Rect zone{bar.x - 16, bar.y - 26, bar.w + 32, bar.h + 52};
-        if (zone.contains(local) && fileLoaded_ && duration_ > 0) {
-            seekAbsolute(positionFromX(local.x));
-            showOsd(3.0);
-        } else if (phase_ == Phase::Playing) {
-            hideOsd();
-        }
+        if (phase_ == Phase::Playing) hideOsd();
     } else {
         showOsd(4.0);
     }
     return true;
+}
+
+void PlayerScreen::drawTapSeek(ui::Renderer& r) {
+    const float a = std::clamp(tapSeekAppear_.value(), 0.0f, 1.0f);
+    if (a <= 0.004f || tapSeekSide_ == 0) return;
+    const std::string label = std::format("{}{} s", tapSeekSide_ < 0 ? "-" : "+", static_cast<int>(tapSeekTotal_));
+    const auto* l = tapSeekText_.get(label, theme::type::headline);
+    constexpr float h = 64, icon = 30, pad = 22, gap = 10;
+    const float w = pad * 2 + icon + gap + (l ? l->width : 0);
+    const float cx = theme::layout::screenWidth * (tapSeekSide_ < 0 ? 0.17f : 0.83f);
+    const Rect box{cx - w * 0.5f, (theme::layout::screenHeight - h) * 0.5f, w, h};
+    r.pushAlpha(std::min(1.0f, a * 1.6f));
+    r.fillRoundRect(box, h * 0.5f, Color::black(0.62f));
+    gfx::drawIcon(r, tapSeekSide_ < 0 ? Icon::Rewind : Icon::FastForward,
+                  {box.x + pad, box.center().y - icon * 0.5f, icon, icon}, theme::color::textPrimary);
+    if (l)
+        r.drawText(*l, {box.x + pad + icon + gap, box.center().y - l->height * 0.5f}, theme::color::textPrimary);
+    r.popAlpha();
 }
 
 // --- Drawing --------------------------------------------------------------------------------
@@ -274,6 +341,7 @@ void PlayerScreen::draw(ui::Renderer& r) {
         drawBottomBar(r, a);
     }
     drawCenter(r);
+    drawTapSeek(r);
     drawSkipButton(r);
     drawUpNext(r);
     drawSeekPreview(r, a);
@@ -788,24 +856,29 @@ void PlayerScreen::refreshTags() {
 }
 
 void PlayerScreen::refreshInfo() {
-    infoLines_.clear();
-    if (!mpv_) return;
-    const float valueW = 470 - 16 * 2 - 130;
-    auto add = [this, valueW](std::string_view k, const std::string& v) {
-        if (v.empty()) return;
-        infoLines_.push_back({gfx::text::layout(k, theme::type::footnote),
-                              gfx::text::layout(v, theme::type::footnote, {.maxWidth = valueW})});
-    };
-    add("Play method", offline_ ? "Local file" : plan_ ? std::string(jellyfin::playMethodName(plan_->method)) : "-");
-    add("Container", mpv_->getString("file-format"));
-    const auto w = mpv_->getInt("width"), h = mpv_->getInt("height");
-    const auto fps = mpv_->getDouble("container-fps");
-    std::string video = mpv_->getString("video-format");
-    if (w && h) video += std::format("  {}x{}", *w, *h);
-    if (fps && *fps > 0) video += std::format(" @ {:.3g} fps", *fps);
-    add("Video", video);
-    add("Decoder", hwdec_.empty() || hwdec_ == "no" ? std::string("Software") : "Hardware (" + hwdec_ + ")");
-    {
+    if (!mpv_) {
+        infoLines_.clear();
+        return;
+    }
+    // The stream description only changes on load, track switches and decoder changes;
+    // only the counters are read on every refresh.
+    enum { kMethod, kContainer, kVideo, kDecoder, kColour, kAudio, kSubtitles, kStaticCount };
+    if (infoStaticDirty_ || infoStaticAge_ >= 5.0 || infoStatic_.size() != kStaticCount) {
+        infoStaticDirty_ = false;
+        infoStaticAge_ = 0;
+        infoStatic_.assign(kStaticCount, {});
+        infoStatic_[kMethod] = {"Play method", offline_ ? "Local file"
+                                               : plan_  ? std::string(jellyfin::playMethodName(plan_->method))
+                                                        : "-"};
+        infoStatic_[kContainer] = {"Container", mpv_->getString("file-format")};
+        const auto w = mpv_->getInt("width"), h = mpv_->getInt("height");
+        const auto fps = mpv_->getDouble("container-fps");
+        std::string video = mpv_->getString("video-format");
+        if (w && h) video += std::format("  {}x{}", *w, *h);
+        if (fps && *fps > 0) video += std::format(" @ {:.3g} fps", *fps);
+        infoStatic_[kVideo] = {"Video", std::move(video)};
+        infoStatic_[kDecoder] = {"Decoder", hwdec_.empty() || hwdec_ == "no" ? std::string("Software")
+                                                                              : "Hardware (" + hwdec_ + ")"};
         const std::string primaries = mpv_->getString("video-params/primaries");
         const std::string gamma = mpv_->getString("video-params/gamma");
         const std::string levels = mpv_->getString("video-params/colorlevels");
@@ -818,24 +891,51 @@ void PlayerScreen::refreshInfo() {
             if (!colour.empty()) colour += "  ·  ";
             colour += part;
         }
-        add("Colour", colour);
+        infoStatic_[kColour] = {"Colour", std::move(colour)};
+        std::string audio = mpv_->getString("audio-codec-name");
+        if (auto ch = mpv_->getInt("audio-params/channel-count")) audio += std::format("  {} ch", *ch);
+        if (auto sr = mpv_->getInt("audio-params/samplerate")) audio += std::format("  {:.1f} kHz", *sr / 1000.0);
+        infoStatic_[kAudio] = {"Audio", std::move(audio)};
+        if (const Track* s = tracks_.selectedSubtitle()) infoStatic_[kSubtitles] = {"Subtitles", TrackManager::describe(*s)};
     }
+
+    std::vector<std::pair<std::string_view, std::string>> entries;
+    entries.reserve(kStaticCount + 6);
+    auto add = [&entries](std::string_view k, std::string v) {
+        if (!v.empty()) entries.emplace_back(k, std::move(v));
+    };
+    auto addStatic = [&](int i) { add(infoStatic_[i].first, infoStatic_[i].second); };
+    for (int i : {kMethod, kContainer, kVideo, kDecoder, kColour}) addStatic(i);
     add("Video bitrate", formatBitrate(mpv_->getDouble("video-bitrate").value_or(0)));
-    std::string audio = mpv_->getString("audio-codec-name");
-    if (auto ch = mpv_->getInt("audio-params/channel-count")) audio += std::format("  {} ch", *ch);
-    if (auto sr = mpv_->getInt("audio-params/samplerate")) audio += std::format("  {:.1f} kHz", *sr / 1000.0);
-    add("Audio", audio);
+    addStatic(kAudio);
     add("Audio bitrate", formatBitrate(mpv_->getDouble("audio-bitrate").value_or(0)));
     add("Dropped frames", std::format("{} output / {} decoder", mpv_->getInt("frame-drop-count").value_or(0),
                                       mpv_->getInt("decoder-frame-drop-count").value_or(0)));
     const double cacheSecs = mpv_->getDouble("demuxer-cache-duration").value_or(0);
     const double cacheSpeed = static_cast<double>(mpv_->getInt("cache-speed").value_or(0));
     add("Cache", std::format("{:.0f} s  ({:.0f} KiB/s)", cacheSecs, cacheSpeed / 1024.0));
-    if (const Track* s = tracks_.selectedSubtitle()) add("Subtitles", TrackManager::describe(*s));
+    addStatic(kSubtitles);
     const auto& d = App::instance().display();
     add("Output", std::format("{}x{} {}  ·  {:.0f} fps UI", d.pixelWidth, d.pixelHeight, d.docked ? "docked" : "handheld",
                               App::instance().fps()));
     if (std::fabs(speed_ - 1.0) > 0.01) add("Speed", std::format("{:.2f}x", speed_));
+
+    // Lay out only the lines whose text changed.
+    const float valueW = 470 - 16 * 2 - 130;
+    const float scale = gfx::text::displayScale();
+    infoLines_.resize(entries.size());
+    for (size_t i = 0; i < entries.size(); ++i) {
+        auto& line = infoLines_[i];
+        const auto& [k, v] = entries[i];
+        if (!line.key || line.keyText != k || line.key->scale != scale) {
+            line.keyText.assign(k);
+            line.key = gfx::text::layout(k, theme::type::footnote);
+        }
+        if (!line.value || line.valueText != v || line.value->scale != scale) {
+            line.valueText = v;
+            line.value = gfx::text::layout(v, theme::type::footnote, {.maxWidth = valueW});
+        }
+    }
 }
 
 void PlayerScreen::drawInfoOverlay(ui::Renderer& r) {

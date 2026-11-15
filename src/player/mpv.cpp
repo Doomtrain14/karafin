@@ -285,9 +285,11 @@ Mpv::~Mpv() {
 }
 
 void Mpv::onWakeup(void* ctx) {
+    // Runs on mpv's threads, which synchronous mpv calls on the main thread may wait for, so it
+    // must not block; the pending flag keeps at most one task queued.
     auto* s = static_cast<Shared*>(ctx);
     if (s->wakePending.exchange(true)) return;
-    main_thread::post([w = s->weak_from_this()] {
+    main_thread::postNoWait([w = s->weak_from_this()] {
         auto sp = w.lock();
         if (!sp) return;
         sp->wakePending.store(false);
@@ -298,7 +300,7 @@ void Mpv::onWakeup(void* ctx) {
 void Mpv::onRenderUpdate(void* ctx) {
     auto* s = static_cast<Shared*>(ctx);
     if (s->updatePending.exchange(true)) return;
-    main_thread::post([w = s->weak_from_this()] {
+    main_thread::postNoWait([w = s->weak_from_this()] {
         auto sp = w.lock();
         if (!sp) return;
         sp->updatePending.store(false);

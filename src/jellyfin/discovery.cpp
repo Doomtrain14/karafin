@@ -128,7 +128,8 @@ void discoverServers(std::function<void(Result<std::vector<DiscoveredServer>>)> 
     opts.priority = kPriorityBackground;
     r.thread = Thread(std::move(opts), [cb = std::move(cb), timeoutMs, token, stop] {
         auto result = discover(timeoutMs, token, stop);
-        main_thread::post([cb, token, stop, result = std::move(result)]() mutable {
+        // No wait: the main thread joins this thread when discovery restarts.
+        main_thread::postNoWait([cb, token, stop, result = std::move(result)]() mutable {
             if (token.cancelled() || stop.cancelled() || !cb) return;
             cb(std::move(result));
         });

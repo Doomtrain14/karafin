@@ -11,6 +11,7 @@ namespace karafin::ui {
 View::View() : alive_(std::make_shared<char>(0)) {}
 
 View::~View() {
+    ++treeGeneration_;
     alive_.reset();
     children_.clear();
 }
@@ -24,6 +25,7 @@ View* View::insertChild(size_t index, std::unique_ptr<View> child) {
     if (raw->z_ != 0) hasZ_ = true;
     index = std::min(index, children_.size());
     children_.insert(children_.begin() + static_cast<std::ptrdiff_t>(index), std::move(child));
+    ++treeGeneration_;
     setNeedsLayout();
     return raw;
 }
@@ -34,6 +36,7 @@ std::unique_ptr<View> View::removeChild(View* child) {
             std::unique_ptr<View> out = std::move(*it);
             children_.erase(it);
             out->setParent(nullptr);
+            ++treeGeneration_;
             setNeedsLayout();
             return out;
         }
@@ -43,6 +46,7 @@ std::unique_ptr<View> View::removeChild(View* child) {
 
 void View::clearChildren() {
     children_.clear();
+    ++treeGeneration_;
     setNeedsLayout();
 }
 
@@ -130,6 +134,7 @@ void View::layoutIfNeeded() {
 void View::setVisible(bool v) {
     if (visible_ == v) return;
     visible_ = v;
+    ++treeGeneration_;
     if (parent_) parent_->setNeedsLayout();
 }
 

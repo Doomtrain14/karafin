@@ -275,6 +275,8 @@ int App::run(std::unique_ptr<AppDelegate> delegate) {
     }
 
     log::info("app", "leaving main loop after {} frames", frame_);
+    // Threads joined during shutdown may be blocked posting to a full queue.
+    main_thread::close();
     delegate_->onStop();
     delegate_.reset();
     appletUnhook(&appletHook_->cookie);

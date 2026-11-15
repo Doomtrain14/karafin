@@ -5,6 +5,7 @@
 #include <condition_variable>
 #include <ctime>
 #include <format>
+#include <limits>
 #include <mutex>
 
 #include "core/fs.hpp"
@@ -44,6 +45,7 @@ enum PropId : uint64_t {
     kChapterList,
     kHwdec,
     kSpeed,
+    kVolume,
 };
 
 constexpr double kReportInterval = 10.0;
@@ -277,6 +279,8 @@ void PlayerScreen::resetForNewItem() {
     pendingLoad_.reset();
     segments_.clear();
     activeSegment_ = nullptr;
+    invalidateSegmentWindow();
+    upNextTriggerFor_ = -1;
     lastSegmentId_.clear();
     handledSegments_.clear();
     skipAppear_.set(0);
@@ -321,6 +325,10 @@ void PlayerScreen::startItem(PlayRequest request) {
     skipMode_ = settings.get<std::string>("player.skip_segments", "ask");
     autoplayNext_ = settings.get<bool>("player.autoplay_next", true);
     seekStep_ = std::clamp(settings.get<int>("player.seek_step", 10), 3, 120);
+    skipSeconds_ = std::clamp(settings.get<int>("player.skip_seconds", 30), 5, 300);
+    const auto skipInput = settings.get<std::string>("player.skip_input", "both");
+    buttonSkip_ = skipInput != "tap";
+    doubleTapSeek_ = skipInput != "buttons";
     showOsd(4.0);
     log::info("player", "play {} (offline={})", request_.itemId, request_.offline);
 
@@ -531,6 +539,7 @@ bool PlayerScreen::ensureMpv() {
     mpv_->observe(kChapterList, "chapter-list", MPV_FORMAT_NODE);
     mpv_->observe(kHwdec, "hwdec-current", MPV_FORMAT_STRING);
     mpv_->observe(kSpeed, "speed", MPV_FORMAT_DOUBLE);
+    mpv_->observe(kVolume, "volume", MPV_FORMAT_DOUBLE);
     return true;
 }
 
@@ -612,6 +621,8 @@ void PlayerScreen::fetchExtras() {
                 if (!r) return;
                 activeSegment_ = nullptr;
                 segments_ = std::move(r.value);
+                invalidateSegmentWindow();
+                upNextTriggerFor_ = -1;
                 log::debug("player", "{} media segments", segments_.size());
             },
             token_);
@@ -866,6 +877,7 @@ void PlayerScreen::onPropertyChange(uint64_t id, const mpv_event_property& prop)
             break;
         case kTrackList:
             if (prop.format == MPV_FORMAT_NODE && prop.data) tracks_.mergeMpv(*static_cast<const mpv_node*>(prop.data));
+            infoStaticDirty_ = true;
             break;
         case kChapterList:
             if (prop.format == MPV_FORMAT_NODE && prop.data && (chapters_.empty() || chaptersFromMpv_)) {
@@ -888,10 +900,14 @@ void PlayerScreen::onPropertyChange(uint64_t id, const mpv_event_property& prop)
             if (fileLoaded_ && wasHardware && (current.empty() || current == "no"))
                 log::warn("player", "hardware decoding stopped ({}); now decoding in software", hwdec_);
             hwdec_ = std::move(current);
+            infoStaticDirty_ = true;
             break;
         }
         case kSpeed:
             if (isDouble) speed_ = d;
+            break;
+        case kVolume:
+            if (isDouble) volume_ = d;
             break;
         default: break;
     }
@@ -900,6 +916,7 @@ void PlayerScreen::onPropertyChange(uint64_t id, const mpv_event_property& prop)
 void PlayerScreen::onFileLoaded() {
     fileLoaded_ = true;
     phase_ = Phase::Playing;
+    infoStaticDirty_ = true;
     if (auto d = mpv_->getDouble("duration"); d && *d > 0) duration_ = *d;
     refreshTrackList();
     applyInitialTracks();
@@ -1067,7 +1084,7 @@ void PlayerScreen::seekRelative(double delta) {
 
 void PlayerScreen::chapterJump(int direction) {
     if (chapters_.size() < 2) {
-        seekRelative(direction * seekStep() * 3);
+        if (buttonSkip_) seekRelative(direction * skipSeconds_);
         return;
     }
     const double pos = displayPosition();
@@ -1078,7 +1095,7 @@ void PlayerScreen::chapterJump(int direction) {
                 showOsd(2.5);
                 return;
             }
-        seekRelative(seekStep() * 3);
+        if (buttonSkip_) seekRelative(skipSeconds_);
     } else {
         double target = 0;
         for (const auto& c : chapters_)
@@ -1241,28 +1258,43 @@ const char* segmentLabel(jellyfin::MediaSegment::Type t) {
 }
 }  // namespace
 
-void PlayerScreen::updateSegments(float dt) {
+void PlayerScreen::findActiveSegment(bool eligible, bool upNextOwnsCredits) {
     activeSegment_ = nullptr;
-    const std::string& mode = skipMode_;
-    if (started_ && phase_ == Phase::Playing && !segments_.empty() && mode != "off" && !scrubbing_) {
-        const int64_t t = secondsToTicks(position_);
-        for (const auto& s : segments_) {
-            if (s.type == jellyfin::MediaSegment::Type::Unknown || !s.contains(t)) continue;
-            if (s.endSeconds() - position_ < 1.0) continue;
-            if (s.type == jellyfin::MediaSegment::Type::Outro && next_ && !upNextDismissed_) {
-                // Credits with a next episode: the up-next card takes over.
-                continue;
-            }
-            activeSegment_ = &s;
-            break;
+    constexpr double inf = std::numeric_limits<double>::infinity();
+    segmentCheckFrom_ = -inf;
+    segmentCheckUntil_ = inf;
+    if (!eligible) return;
+    const int64_t t = secondsToTicks(position_);
+    for (const auto& s : segments_) {
+        if (s.type == jellyfin::MediaSegment::Type::Unknown) continue;
+        // Narrow the window to the nearest boundaries around the position.
+        for (const double b : {s.startSeconds(), s.endSeconds() - 1.0, s.endSeconds()}) {
+            if (b <= position_) segmentCheckFrom_ = std::max(segmentCheckFrom_, b);
+            else segmentCheckUntil_ = std::min(segmentCheckUntil_, b);
         }
+        if (activeSegment_ || !s.contains(t)) continue;
+        if (s.endSeconds() - position_ < 1.0) continue;
+        // Credits with a next episode: the up-next card takes over.
+        if (s.type == jellyfin::MediaSegment::Type::Outro && upNextOwnsCredits) continue;
+        activeSegment_ = &s;
+    }
+}
+
+void PlayerScreen::updateSegments(float dt) {
+    const std::string& mode = skipMode_;
+    const bool eligible = started_ && phase_ == Phase::Playing && !segments_.empty() && mode != "off" && !scrubbing_;
+    const bool upNextOwnsCredits = next_.has_value() && !upNextDismissed_;
+    const unsigned key = (eligible ? 1u : 0u) | (upNextOwnsCredits ? 2u : 0u);
+    if (key != segmentStateKey_ || position_ < segmentCheckFrom_ || position_ >= segmentCheckUntil_) {
+        segmentStateKey_ = key;
+        findActiveSegment(eligible, upNextOwnsCredits);
     }
     if (activeSegment_) {
         if (activeSegment_->id != lastSegmentId_) {
             lastSegmentId_ = activeSegment_->id;
             segmentShownFor_ = 0;
+            skipLabel_ = segmentLabel(activeSegment_->type);
         }
-        skipLabel_ = segmentLabel(activeSegment_->type);
         if (mode == "auto" && activeSegment_->type != jellyfin::MediaSegment::Type::Outro &&
             !handledSegments_.count(activeSegment_->id)) {
             handledSegments_.insert(activeSegment_->id);
@@ -1271,6 +1303,7 @@ void PlayerScreen::updateSegments(float dt) {
                       gfx::Icon::SkipNext, 2.2f);
             seekAbsolute(activeSegment_->endSeconds() + 0.05);
             activeSegment_ = nullptr;
+            invalidateSegmentWindow();
         } else {
             segmentShownFor_ += dt;
         }
@@ -1286,6 +1319,7 @@ void PlayerScreen::skipActiveSegment() {
     handledSegments_.insert(activeSegment_->id);
     const double end = activeSegment_->endSeconds();
     activeSegment_ = nullptr;
+    invalidateSegmentWindow();
     skipAppear_.springTo(0.0f, ui::theme::motion::snappy);
     if (end >= duration_ - 1.0 && next_) {
         playNext(true);
@@ -1298,10 +1332,14 @@ void PlayerScreen::updateUpNext(float dt) {
     if (!next_ || !started_) {
         upNextVisible_ = false;
     } else if (phase_ == Phase::Playing) {
-        double trigger = std::max(duration_ * 0.9, duration_ - 30.0);
-        for (const auto& s : segments_)
-            if (s.type == jellyfin::MediaSegment::Type::Outro && s.startSeconds() > duration_ * 0.5)
-                trigger = std::min(trigger, s.startSeconds());
+        if (upNextTriggerFor_ != duration_) {
+            upNextTriggerFor_ = duration_;
+            upNextTrigger_ = std::max(duration_ * 0.9, duration_ - 30.0);
+            for (const auto& s : segments_)
+                if (s.type == jellyfin::MediaSegment::Type::Outro && s.startSeconds() > duration_ * 0.5)
+                    upNextTrigger_ = std::min(upNextTrigger_, s.startSeconds());
+        }
+        const double trigger = upNextTrigger_;
         const bool inZone = duration_ > 0 && displayPosition() >= trigger && !scrubbing_;
         if (inZone && !upNextVisible_ && !upNextDismissed_) {
             upNextVisible_ = true;
@@ -1449,11 +1487,13 @@ void PlayerScreen::update(float dt) {
 
     if (showInfo_) {
         infoTimer_ -= dt;
+        infoStaticAge_ += dt;
         if (infoTimer_ <= 0) {
             refreshInfo();
-            infoTimer_ = 0.5;
+            infoTimer_ = 1.0;
         }
     }
+    tapSeekAppear_.update(dt);
     // Codec properties change on track switches and transcode fallbacks; poll only while visible.
     if (osd_.value() > 0.004f) {
         tagsTimer_ -= dt;
@@ -1546,7 +1586,8 @@ bool PlayerScreen::onInput(const ui::InputEvent& e) {
             return true;
         case Key::L:
         case Key::R:
-            if (e.pressedOrRepeat() && fileLoaded_) seekRelative((e.button == Key::L ? -3.0 : 3.0) * seekStep());
+            if (e.pressedOrRepeat() && fileLoaded_ && buttonSkip_)
+                seekRelative((e.button == Key::L ? -1.0 : 1.0) * skipSeconds_);
             return true;
         case Key::Y:
             if (e.pressed()) openTrackMenu();
@@ -1558,6 +1599,7 @@ bool PlayerScreen::onInput(const ui::InputEvent& e) {
             if (e.pressed()) {
                 showInfo_ = !showInfo_;
                 infoTimer_ = 0;
+                infoStaticDirty_ = true;
             }
             return true;
         default: return false;

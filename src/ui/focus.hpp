@@ -7,7 +7,9 @@
 // focusable view in that direction within the scope. Entering a container that remembers focus
 // (View::setRememberFocus) restores its last focused descendant.
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
 #include "ui/view.hpp"
 
@@ -35,9 +37,14 @@ private:
     View* resolve(View* v) const;
     View* redirectToMemory(View* target, View* from) const;
     void apply(View* target);
+    // Focusable views under `scope` in tree order, reused until View::treeGeneration_ moves.
+    const std::vector<View*>& focusables(View* scope);
 
     Ref<View> focused_;
     Ref<View> scope_;
+    std::vector<View*> focusables_;
+    const View* focusablesScope_ = nullptr;
+    uint64_t focusablesGeneration_ = 0;
     // focusId of the last view apply() focused. Kept after that view is destroyed so a rebuild
     // can hand focus back without replaying the gain animation.
     std::string lastFocusId_;

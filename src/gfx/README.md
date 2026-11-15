@@ -128,14 +128,17 @@ gfx::ImageCache::instance().trimMemory();                // e.g. before playback
 
 Pipeline: memory -> disk cache (`sdmc:/switch/karafin/cache/img/<x>/<hash>.bin`, original bytes
 behind a 24-byte header with length + checksum, written via `.tmp` + rename; entries that fail
-validation, including the old headerless format, are deleted and refetched; trimmed at start to
-`ui.image_disk_cache_mb`, default 256) -> HTTP -> worker decode (libjpeg-turbo with DCT
-downscaling, libwebp with scaled decoding, libpng streamed row by row and area-averaged straight
-to the display size, stb_image for interlaced PNG/GIF/BMP at full size) -> premultiply
--> area-average downscale -> optional blur (on the display-size image) -> main-thread upload.
+validation, including the old headerless format, are deleted and refetched; kept under
+`ui.image_disk_cache_mb`, default 256, by a running size estimate saved in `img/state`: the
+oldest-first trim scans every file only when the estimate goes over budget or the last scan is
+over a day old) -> HTTP -> worker decode (libjpeg-turbo with DCT
+downscaling, libwebp with scaled decoding, libpng streamed row by row (interlaced files pass by
+pass) and area-averaged straight to the display size, stb_image for GIF/BMP at full size) -> premultiply
+-> area-average downscale -> optional blur (on a copy shrunk by up to sigma, max 4x, with sigma
+reduced to match; the GPU's bilinear filter upscales it when drawn) -> main-thread upload.
 Large decodes share a 48 MiB process-wide budget (they queue rather than all holding full-size
-buffers at once); stb_image / lossless WebP sources are capped at 3072x3072, JPEG / lossy WebP /
-non-interlaced PNG at
+buffers at once); GIF/BMP and lossless WebP (whose format needs the whole image in memory) are
+capped at 3072x3072, JPEG / lossy WebP / PNG at
 4096x4096. Decoded images waiting for upload are capped at 32 MiB: workers wait before decoding
 (giving up after 3 s, on cancellation or at `shutdown()`, leaving the image Idle to reload when
 drawn), and decoded results nobody references or draws any more are dropped before upload.

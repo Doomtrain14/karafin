@@ -50,7 +50,9 @@ player::shutdown();   // app quit: first thing in onStop (main thread), before u
 | `player.autoplay_next` | bool | `true` | Count down and play the next episode automatically |
 | `player.skip_segments` | string | `"ask"` | Intro/recap/preview/ad/credits segments: `ask` shows a Skip button, `auto` skips them with a toast, `off` ignores them |
 | `player.hwdec` | bool | `true` | Hardware decoding (`nvtegra-copy`; software fallback is automatic) |
-| `player.seek_step` | int | `10` | Seconds per D-pad step (3 to 120). L/R jump 3 steps |
+| `player.seek_step` | int | `10` | Seconds per D-pad step (3 to 120) |
+| `player.skip_seconds` | int | `30` | Seconds jumped by L/R and by double-tapping a side of the screen (5 to 300; the menu offers 5, 10, 15, 30, 60) |
+| `player.skip_input` | string | `"both"` | What skips by `skip_seconds`: `buttons` (L / R, and ZL / ZR without chapters), `tap` (double-tap the left / right third of the screen) or `both`. ZL / ZR chapter jumps work either way |
 
 The player also reads `http.verify_tls` (core) for TLS verification of the stream.
 
@@ -64,14 +66,15 @@ example, choosing Japanese audio and English subtitles carries over to the follo
 | A | Play/pause. Also: commit a seek preview, press the visible Skip button, or play the up-next episode |
 | B | Cancel the seek preview. Otherwise hide the up-next card, then hide the OSD, then exit (stops immediately, no confirmation) |
 | D-pad ←/→ (or stick) | Seek preview by `seek_step`. Holding accelerates to 3x, 6x, then 12x. Committed 0.65 s after release, or with A |
-| ZL / ZR | Previous / next chapter. Without chapters: −/+ 3 × `seek_step` |
-| L / R | −/+ 3 × `seek_step` |
+| ZL / ZR | Previous / next chapter. Without chapters (or past the last one): −/+ `skip_seconds`, unless `skip_input` is `tap` |
+| L / R | −/+ `skip_seconds`, unless `skip_input` is `tap` |
 | Y | Audio & Subtitles sheet: audio track, Off, subtitle tracks, Download subtitles, Check for downloaded subtitle |
 | X | Options sheet: speed (0.5x to 2x), subtitle delay (±0.1 s / ±1 s), subtitle size, subtitle position, aspect ratio & zoom, chapters, playback info |
 | − | Toggle the playback info overlay (play method, container, codec, resolution and fps, decoder, bitrates, dropped frames, cache) |
 | ↑ / ↓ | Show the OSD |
 | + | App quit confirmation (ui default) |
 | Touch | Tap toggles the OSD and activates the on-screen buttons (back, ±seek, play/pause, next, Audio & Subtitles, Options, Skip, up-next card). Tap or drag on the seek bar to scrub, with a preview |
+| Double-tap left / right third | −/+ `skip_seconds` with a badge on that side; further quick taps add to the jump. The OSD stays as it was before the first tap. Off when `player.skip_input` is `buttons` |
 | Swipe vertically on the left / right | Adjust handheld screen brightness / playback volume, with a vertical level indicator on the same side. Gestures starting on buttons or the seek bar are excluded. Volume ranges 0-200% (mpv `volume-max`; above 100% the audio is amplified, marked on the indicator); brightness 5-100% |
 
 Up-next uses a 10-second countdown, including at EOF for short episodes or late seeks. Automatic

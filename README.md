@@ -147,14 +147,15 @@ The button names below are the Nintendo labels: A is the right face button and B
 | --- | --- |
 | A | Play/pause. Also confirms a seek preview, presses a visible Skip button, or plays the next episode |
 | D-pad ← / → (or stick) | Seek preview. Hold to speed up. It commits on release, or right away with A |
-| L / R | Jump back / forward 3 seek steps |
-| ZL / ZR | Previous / next chapter |
+| L / R | Skip back / forward (30 seconds by default, set by **Skip amount** in Settings > Playback). Can be turned off with **Skip with** |
+| ZL / ZR | Previous / next chapter. Without chapters, skips like L / R |
 | Y | Audio and subtitles, including **Download subtitles** |
 | X | Options: speed, subtitle delay, size and position, aspect ratio and zoom, chapters, playback info |
 | − | Show or hide the playback info overlay |
 | ↑ / ↓ | Show the on-screen controls |
 | B | Cancel the seek preview, hide the controls, then leave the player |
 | Touch | Tap to show the controls and press on-screen buttons. Drag on the seek bar to scrub |
+| Double-tap the left / right side | Skip back / forward by the **Skip amount**. Tap again quickly to skip further. Can be turned off with **Skip with** |
 | Swipe up / down on the left | Raise / lower screen brightness (handheld). The original brightness and automatic brightness setting are restored when leaving playback or opening HOME |
 | Swipe up / down on the right | Raise / lower playback volume (0-200%, independent of the console's volume buttons; above 100% boosts quiet audio) |
 
@@ -185,7 +186,7 @@ useful ones:
   - Hardware decoding: on by default. Turn it off only to troubleshoot.
   - Preferred audio language, autoplay of the next episode, and skipping of intros and credits
     (ask, automatic or off).
-  - Seek step.
+  - Seek step (D-pad), skip amount, and whether skipping uses the L / R and ZL / ZR buttons, double-tap, or both.
 - **Subtitles**: mode, preferred language, text size, position and background box.
 - **Downloads**
   - Simultaneous downloads: 1 to 4 (default 1).

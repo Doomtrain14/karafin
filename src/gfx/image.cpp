@@ -6,6 +6,7 @@
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <format>
 #include <mutex>
 #include <optional>
@@ -172,6 +173,107 @@ bool writeDiskFile(const std::string& path, std::string_view payload) {
     return ok;
 }
 
+// Deletes the oldest cache files until the directory fits in `budget` bytes. Returns the bytes left.
+uint64_t trimDiskCache(const std::string& root, size_t budget) {
+    struct Entry {
+        std::string path;
+        size_t size;
+        time_t mtime;
+    };
+    std::vector<Entry> files;
+    uint64_t total = 0;
+    const char* hex = "0123456789abcdef";
+    for (int i = 0; i < 16; ++i) {
+        const std::string dir = root + "/" + hex[i];
+        DIR* d = opendir(dir.c_str());
+        if (!d) continue;
+        while (dirent* e = readdir(d)) {
+            if (e->d_name[0] == '.') continue;
+            std::string p = dir + "/" + e->d_name;
+            struct stat st{};
+            if (stat(p.c_str(), &st) != 0) continue;
+            files.push_back({std::move(p), static_cast<size_t>(st.st_size), st.st_mtime});
+            total += static_cast<size_t>(st.st_size);
+        }
+        closedir(d);
+    }
+    if (total <= budget) {
+        log::debug("image", "disk cache {} files, {} KiB", files.size(), total / 1024);
+        return total;
+    }
+    std::sort(files.begin(), files.end(), [](const Entry& a, const Entry& b) { return a.mtime < b.mtime; });
+    size_t removed = 0;
+    for (const Entry& f : files) {
+        if (total <= budget * 9 / 10) break;
+        if (std::remove(f.path.c_str()) == 0) {
+            total -= f.size;
+            ++removed;
+        }
+    }
+    log::info("image", "disk cache trimmed {} files, now {} KiB", removed, total / 1024);
+    return total;
+}
+
+// Running estimate of the disk cache size, so a launch does not have to stat every file. The
+// full scan (trimDiskCache) runs when the estimate goes over the budget, or when the last scan is
+// more than a day old (corrects drift, e.g. writes not saved before a crash). The estimate and
+// the time of the last scan persist in "<root>/state".
+constexpr int64_t kDiskScanInterval = 24 * 60 * 60;
+constexpr uint32_t kDiskStateSaveEvery = 32;  // written entries between state saves
+
+std::atomic<uint64_t> g_diskBytes{0};
+std::atomic<size_t> g_diskBudget{0};
+std::atomic<int64_t> g_diskScanTime{0};
+std::atomic<uint32_t> g_diskUnsaved{0};
+std::atomic<bool> g_diskScanning{false};
+std::mutex g_diskStateMutex;
+
+int64_t unixNow() { return static_cast<int64_t>(std::time(nullptr)); }
+
+std::string diskStatePath() { return imageDir() + "/state"; }
+
+void saveDiskState() {
+    std::lock_guard lock(g_diskStateMutex);
+    g_diskUnsaved.store(0);
+    fs::writeFileAtomic(diskStatePath(), std::format("{} {}\n", g_diskScanTime.load(), g_diskBytes.load()));
+}
+
+void scanDiskCache() {
+    if (g_diskScanning.exchange(true)) return;
+    g_diskBytes.store(trimDiskCache(imageDir(), g_diskBudget.load()));
+    g_diskScanTime.store(unixNow());
+    saveDiskState();
+    g_diskScanning.store(false);
+}
+
+// Startup: trusts the saved estimate when it is recent and within budget, otherwise scans.
+void loadDiskState() {
+    long long scanned = 0;
+    unsigned long long bytes = 0;
+    const int64_t t = unixNow();
+    const auto state = fs::readFileAtomic(diskStatePath());
+    if (state && std::sscanf(state->c_str(), "%lld %llu", &scanned, &bytes) == 2 && scanned <= t &&
+        t - scanned < kDiskScanInterval && bytes <= g_diskBudget.load()) {
+        g_diskBytes.fetch_add(bytes);
+        g_diskScanTime.store(scanned);
+        log::debug("image", "disk cache ~{} KiB (scanned {} s ago)", bytes / 1024, t - scanned);
+        return;
+    }
+    scanDiskCache();
+}
+
+void noteDiskWrite(uint64_t bytes) {
+    const uint64_t total = g_diskBytes.fetch_add(bytes) + bytes;
+    if (total > g_diskBudget.load()) {
+        if (!g_diskScanning.load())
+            workers().post([] {
+                if (g_diskBytes.load() > g_diskBudget.load()) scanDiskCache();
+            });
+    } else if (g_diskUnsaved.fetch_add(1) + 1 >= kDiskStateSaveEvery) {
+        saveDiskState();
+    }
+}
+
 void writeDiskEntry(const std::string& path, std::string_view bytes) {
     if (bytes.empty()) return;
     {
@@ -180,7 +282,8 @@ void writeDiskEntry(const std::string& path, std::string_view bytes) {
     }
     if (!fs::exists(path)) {
         fs::ensureDir(fs::parentDir(path));
-        if (!writeDiskFile(path, bytes)) log::debug("image", "disk cache write failed: {}", path);
+        if (writeDiskFile(path, bytes)) noteDiskWrite(kDiskHeaderBytes + bytes.size());
+        else log::debug("image", "disk cache write failed: {}", path);
     }
     std::lock_guard lock(g_writeMutex);
     g_writing.erase(path);
@@ -235,46 +338,6 @@ bool waitForPendingRoom(const CancelToken& cancel) {
     return !g_pendingStop && !cancel.cancelled();
 }
 
-// Deletes the oldest cache files until the directory fits in `budget` bytes.
-void trimDiskCache(const std::string& root, size_t budget) {
-    struct Entry {
-        std::string path;
-        size_t size;
-        time_t mtime;
-    };
-    std::vector<Entry> files;
-    size_t total = 0;
-    const char* hex = "0123456789abcdef";
-    for (int i = 0; i < 16; ++i) {
-        const std::string dir = root + "/" + hex[i];
-        DIR* d = opendir(dir.c_str());
-        if (!d) continue;
-        while (dirent* e = readdir(d)) {
-            if (e->d_name[0] == '.') continue;
-            std::string p = dir + "/" + e->d_name;
-            struct stat st{};
-            if (stat(p.c_str(), &st) != 0) continue;
-            files.push_back({std::move(p), static_cast<size_t>(st.st_size), st.st_mtime});
-            total += static_cast<size_t>(st.st_size);
-        }
-        closedir(d);
-    }
-    if (total <= budget) {
-        log::debug("image", "disk cache {} files, {} KiB", files.size(), total / 1024);
-        return;
-    }
-    std::sort(files.begin(), files.end(), [](const Entry& a, const Entry& b) { return a.mtime < b.mtime; });
-    size_t removed = 0;
-    for (const Entry& f : files) {
-        if (total <= budget * 9 / 10) break;
-        if (std::remove(f.path.c_str()) == 0) {
-            total -= f.size;
-            ++removed;
-        }
-    }
-    log::info("image", "disk cache trimmed {} files, now {} KiB", removed, total / 1024);
-}
-
 }  // namespace
 
 ImageCache::Result::~Result() { releasePending(charged); }
@@ -301,7 +364,15 @@ struct ImageCacheAccess {
             return res;
         }
         Pixmap pix = std::move(*decoded);
-        if (spec.blur > 0) blur(pix, spec.blur);
+        if (spec.blur > 0) {
+            // A blurred image has no detail to keep: blur a copy shrunk by up to sigma (at most
+            // 4x, leaving >= 1 px of blur to hide the bilinear upscale when it is drawn).
+            const int factor = std::clamp(static_cast<int>(spec.blur), 1, 4);
+            if (factor > 1)
+                pix = resize(pix, std::max(1, (pix.width + factor / 2) / factor),
+                             std::max(1, (pix.height + factor / 2) / factor));
+            blur(pix, spec.blur / static_cast<float>(factor));
+        }
         res->dominant = dominantColor(pix);
         res->pixmap = std::move(pix);
         res->charged = res->pixmap.bytes();
@@ -413,16 +484,17 @@ void ImageCache::init() {
     initialized_ = true;
     setPendingStopped(false);
     const std::string root = imageDir();
-    const size_t diskBudget = diskBudget_;
-    workers().post([root, diskBudget] {
+    g_diskBudget.store(diskBudget_);
+    workers().post([root] {
         const char* hex = "0123456789abcdef";
         for (int i = 0; i < 16; ++i) fs::ensureDir(root + "/" + hex[i]);
-        trimDiskCache(root, diskBudget);
+        loadDiskState();
     });
     log::info("image", "cache ready: {} MiB textures, {} MiB disk", budget_ >> 20, diskBudget_ >> 20);
 }
 
 void ImageCache::shutdown() {
+    if (initialized_) saveDiskState();
     initialized_ = false;
     setPendingStopped(true);  // workers waiting for upload room give up (pool shutdown joins them)
     queue_.clear();
@@ -780,6 +852,9 @@ void ImageCache::clearDiskCache() {
         fs::removeTree(root);
         const char* hex = "0123456789abcdef";
         for (int i = 0; i < 16; ++i) fs::ensureDir(root + "/" + hex[i]);
+        g_diskBytes.store(0);
+        g_diskScanTime.store(unixNow());
+        saveDiskState();
         log::info("image", "disk cache cleared");
     });
 }

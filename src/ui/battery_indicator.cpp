@@ -43,7 +43,20 @@ float BatteryIndicator::draw(Renderer& r, float right, float centerY, gfx::Color
     const gfx::Rect inner = body.inset(2.5f);
     if (level > 0) r.fillRoundRect({inner.x, inner.y, std::max(2.0f, inner.w * level), inner.h}, 1.5f, fill);
 
-    const float textX = bodyX - gap - label_->width;
+    float textRight = bodyX - gap;
+    if (charging_) {
+        // Lightning bolt between the percentage and the battery.
+        constexpr float boltW = 8, boltH = 13;
+        const float bx = textRight - boltW, top = centerY - boltH * 0.5f;
+        const gfx::Color c = theme::color::success.withAlpha(theme::color::success.a * color.a);
+        const gfx::Vec2 pts[] = {{bx + 6.5f, top},
+                                 {bx + 1.0f, centerY + 1.0f},
+                                 {bx + 7.0f, centerY - 1.0f},
+                                 {bx + 1.5f, top + boltH}};
+        for (int i = 0; i < 3; ++i) r.drawLine(pts[i], pts[i + 1], 2.0f, c);
+        textRight = bx - 5;
+    }
+    const float textX = textRight - label_->width;
     r.drawText(*label_, {textX, centerY - label_->height * 0.5f}, color);
     return right - textX;
 }

@@ -52,7 +52,7 @@ includes only core).
 | `core/thread_pool.hpp` | `workers().post(fn)`, `workers().submit(fn) -> std::future` |
 | `core/thread.hpp` | `Thread(ThreadOptions{name, stackSize, priority, core}, fn)` for long-lived loops |
 | `core/perf.hpp` | per-frame counters (`perf::frame().uploads++` ...), frame history for the stats overlay, slow-frame debug log |
-| `core/main_queue.hpp` | `main_thread::post(fn)`, `postDelayed(sec, fn)`, `isCurrent()` |
+| `core/main_queue.hpp` | `main_thread::post(fn)`, `postNoWait(fn)`, `postDelayed(sec, fn)`, `isCurrent()` |
 | `core/cancel.hpp` | `CancelToken` (shared flag; copy it into requests, `cancel()` from the owner) |
 | `core/http.hpp` | `http::Client::instance().send(Request, cb)` (async), `.perform(Request)` (blocking, worker threads only), `Response::json()`, `urlEncode/buildQuery/joinUrl` |
 | `core/platform.hpp` | `isAppletMode()`, `isDocked()`, `hasFocus()`, `networkConnected()`, RAII `CpuBoost`, RAII `AwakeLock` |
@@ -75,7 +75,13 @@ includes only core).
 4. **Dedicated `karafin::Thread`s** for long-running loops (download transfers via blocking
    `perform`, mpv's own threads).
 5. Cross-thread results go back with `main_thread::post`. Objects captured in posted lambdas must
-   outlive the callback: capture `shared_ptr`/`weak_ptr`, or check a `CancelToken` first.
+   outlive the callback: capture `shared_ptr`/`weak_ptr`, or check a `CancelToken` first. At most
+   1024 tasks posted from other threads are pending: past that, `post` blocks until the main thread
+   drains the queue, so never post while holding a lock the main thread can take. The main thread
+   never waits on its own queue. `postNoWait` skips the limit for posters that keep at most one
+   task outstanding or must not block: mpv callbacks, server discovery and the download manager's
+   coalesced event flush. `main_thread::close()` runs as soon as the loop exits; later posts are
+   dropped and blocked posters return, so shutdown can join their threads.
 6. `Settings::set` and listeners: call from the main thread.
 
 ## Startup / shutdown order (core/main.cpp)

@@ -106,6 +106,8 @@ Events (`subscribe`/`Subscription`, always delivered on the **main thread**):
 | `Removed` | The download was cancelled or deleted. `info` is the last snapshot. |
 
 Bulk operations emit one event per item. A simple screen can re-read `pending()` on every event.
+Events are buffered and delivered together once per frame, in order. If a newer `Progress` arrives
+for a download before delivery, it replaces the earlier undelivered one.
 
 The offline entry point from the server/login screen works without any client. Snapshots and
 `library()` read only the local queue and files.
@@ -255,7 +257,8 @@ sdmc:/switch/karafin/downloads/
 ## Threads
 
 * `dl-1` through `dl-4` run transfers with blocking `http::Client::perform` and `Call<T>::wait`. Only
-  `concurrency` of them are active at a time.
+  `concurrency` of them are started; `setConcurrency` adds threads when raised. Lowering it keeps the
+  extra threads idle (at most `concurrency` transfers run at a time).
 * `dl-io` handles queue saves, folder deletions and metadata patches.
 * Event delivery, `enqueue` callbacks and `loadLibrary` callbacks run on the main thread.
 

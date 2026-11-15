@@ -83,6 +83,11 @@ struct DownloadManager::Impl {
     std::vector<std::pair<int, Listener>> listeners;
     int nextListenerId = 1;
 
+    // --- Events waiting for the main thread (eventMutex; taken under mutex) ---
+    std::mutex eventMutex;
+    std::vector<Event> pendingEvents;
+    bool eventFlushPosted = false;
+
     // --- Clients per server/user ---
     std::mutex clientMutex;
     std::map<std::string, jellyfin::ClientPtr> clients;
@@ -98,6 +103,7 @@ struct DownloadManager::Impl {
     // --- manager.cpp ---
     void ensureLoaded();                 // mutex held
     void startLocked();                  // mutex held
+    void ensureSlotsLocked();            // mutex held; one dl-N thread per allowed transfer
     void markDirty(bool urgent);         // mutex held
     void saveNow();                      // takes mutex briefly for the snapshot
     void postIo(std::function<void()> fn);
@@ -107,6 +113,7 @@ struct DownloadManager::Impl {
     DownloadInfo snapshot(const detail::Task& t) const;  // mutex held
     void emit(EventType type, const detail::Task& t);    // mutex held
     void emitInfo(EventType type, DownloadInfo info);
+    void flushEvents();                  // main thread
     void dispatch(const Event& ev);      // main thread
     bool removeLocked(const std::string& key, bool allowCompleted);  // mutex held
     void scheduleDelete(const std::string& serverId, const std::string& itemId);  // mutex held
