@@ -84,6 +84,8 @@ offline viewing with pause and resume.
   - Offline library and playback. Watch progress is synced back to the server when it is
     reachable again.
   - The download list shows each movie's, show's and episode's summary.
+  - The console never auto-sleeps while something is downloading. **Keep screen on** (the sun
+    button on the Downloads tab, or Settings > Downloads) also keeps the screen from dimming.
 
 ## Install
 
@@ -165,6 +167,9 @@ paused, buffering, seeking, in a menu, or away from the app. Press A or tap the 
 immediately; press B or tap **Hide** to cancel autoplay for this episode. Turn off **Autoplay
 next episode** in Settings > Playback to keep the card manual-only.
 
+The screen stays on and the console doesn't sleep while a video plays, loads or buffers. When
+you pause, the normal dimming and sleep timers apply again.
+
 Pressing HOME pauses playback. If you come back within 30 seconds, playback continues; after
 sleep or a longer break it stays paused. If the network drops mid-video (for example after
 sleep), the player shows "Reconnecting" and continues where it left off once the connection is
@@ -191,6 +196,7 @@ useful ones:
 - **Downloads**
   - Simultaneous downloads: 1 to 4 (default 1).
   - Resume downloads on launch.
+  - Keep screen on while downloading (default on).
   - Speed limit while streaming, so downloads don't starve playback.
   - Delete watched downloads.
 - **Interface**

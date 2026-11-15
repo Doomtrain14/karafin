@@ -64,6 +64,7 @@ struct DownloadManager::Impl {
     std::set<std::string> deleting;                            // folders scheduled for deletion
     uint64_t nextJobId = 1;
     std::optional<platform::AwakeLock> awake;
+    bool awakeScreenOn = true;  // the mode `awake` was taken with
     bool dirty = false;
     bool dirtyUrgent = false;
     Clock::time_point dirtySince{};

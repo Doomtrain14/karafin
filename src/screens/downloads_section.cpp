@@ -53,11 +53,20 @@ DownloadsSection::DownloadsSection(MainMode mode) : mode_(mode) {
 
     auto* buttons = add<Box>(Axis::Horizontal);
     buttons->setSpacing(12);
-    const float bw = 3 * 48 + 2 * 12;
+    const float bw = 4 * 48 + 3 * 12;
     buttons->setFrame({theme::layout::screenWidth - theme::layout::marginX - bw, kTitleY + 2, bw, 48});
+    keepScreenOn_ = buttons->add<ActionButton>("", gfx::Icon::Brightness, ButtonStyle::Icon);
     pauseAll_ = buttons->add<ActionButton>("", gfx::Icon::Pause, ButtonStyle::Icon, "Pause all");
     resumeAll_ = buttons->add<ActionButton>("", gfx::Icon::Play, ButtonStyle::Icon, "Resume all");
     deleteWatched_ = buttons->add<ActionButton>("", gfx::Icon::Trash, ButtonStyle::Icon, "Delete watched");
+    keepScreenOn_->onActivate = [this] {
+        auto& dm = dl::DownloadManager::instance();
+        dm.setKeepScreenOn(!dm.keepScreenOn());
+        updateScreenOnButton();
+        toast(dm.keepScreenOn() ? "Screen stays on while downloading" : "Screen can dim while downloading",
+              ToastKind::Info, gfx::Icon::Brightness, 1.8f);
+    };
+    updateScreenOnButton();
     pauseAll_->onActivate = [] {
         dl::DownloadManager::instance().pauseAll();
         toast("All downloads paused", ToastKind::Info, gfx::Icon::Pause, 1.8f);
@@ -100,8 +109,15 @@ DownloadsSection::DownloadsSection(MainMode mode) : mode_(mode) {
 
 void DownloadsSection::onSectionShown(bool first) {
     visibleNow_ = true;
+    updateScreenOnButton();
     if (first || dirty_) rebuild();
     else updateHeader();
+}
+
+void DownloadsSection::updateScreenOnButton() {
+    const bool on = dl::DownloadManager::instance().keepScreenOn();
+    keepScreenOn_->setActive(on);
+    keepScreenOn_->setTooltip(on ? "Keep screen on: On" : "Keep screen on: Off");
 }
 
 void DownloadsSection::onSectionHidden() { visibleNow_ = false; }

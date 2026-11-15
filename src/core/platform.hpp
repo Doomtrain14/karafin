@@ -75,14 +75,17 @@ public:
     CpuBoost& operator=(const CpuBoost&) = delete;
 };
 
-// Reference-counted "keep awake": disables auto-sleep and screen dimming while any instance is
-// alive (video playback, active downloads).
+// Reference-counted "keep awake": disables auto-sleep while any instance is alive (video
+// playback, active downloads). With `screenOn` it also disables screen dimming.
 class AwakeLock {
 public:
-    AwakeLock();
+    explicit AwakeLock(bool screenOn = true);
     ~AwakeLock();
     AwakeLock(const AwakeLock&) = delete;
     AwakeLock& operator=(const AwakeLock&) = delete;
+
+private:
+    bool screenOn_;
 };
 
 }  // namespace karafin::platform

@@ -18,7 +18,7 @@ namespace karafin::screens {
 class PendingDownloadRow;
 
 // Downloads: storage usage, "In progress" (progress, speed, ETA, size; pause / resume / cancel
-// each, pause all / resume all) and "Downloaded" (movies, and shows grouped by series; play
+// each, pause all / resume all, keep screen on) and "Downloaded" (movies, and shows grouped by series; play
 // offline, mark watched, delete, delete watched). Live via DownloadManager events.
 class DownloadsSection : public SectionView {
 public:
@@ -36,11 +36,13 @@ private:
     void rebuild();
     void build(const downloads::OfflineLibrary& library);
     void updateHeader();
+    void updateScreenOnButton();
     std::string focusedKey() const;
 
     MainMode mode_;
     ui::Label* title_ = nullptr;
     ui::Label* summary_ = nullptr;
+    ActionButton* keepScreenOn_ = nullptr;
     ActionButton* pauseAll_ = nullptr;
     ActionButton* resumeAll_ = nullptr;
     ActionButton* deleteWatched_ = nullptr;

@@ -94,7 +94,7 @@ sub_ = downloads::Subscription([this](const downloads::Event& e) {
 | Delete watched | `dm.removeWatched()` returns how many were deleted |
 | Retry | `dm.retry(key)`, `dm.retryFailed()` |
 | Storage bar | `dm.storage()` → `downloadedBytes`, `partialBytes`, `reservedBytes` (still to download), `freeBytes`, `totalBytes` |
-| Settings | `setConcurrency(1..4)`, `setAutoResume(bool)` (main thread, stored in settings) |
+| Settings | `setConcurrency(1..4)`, `setAutoResume(bool)`, `setKeepScreenOn(bool)` (main thread, stored in settings) |
 
 Events (`subscribe`/`Subscription`, always delivered on the **main thread**):
 
@@ -219,7 +219,9 @@ auto next = dm.nextOfflineEpisode(key);                     // offline autoplay
    Completed; if that fails the download fails with the SD error, and a retry finds the finished
    file and only redoes this step.
 
-A core `platform::AwakeLock` is held while any job is Probing or Downloading.
+A core `platform::AwakeLock` is held while any job is Probing or Downloading, so the console
+never auto-sleeps mid-download. It also blocks screen dimming when `downloads.keep_screen_on` is
+true; `setKeepScreenOn` swaps the lock immediately if a download is running.
 
 ## Persistence layout
 
@@ -252,6 +254,7 @@ sdmc:/switch/karafin/downloads/
 | --- | --- | --- |
 | `downloads.concurrency` | `1` | parallel transfers (1..4) |
 | `downloads.auto_resume` | `false` | resume interrupted downloads on launch |
+| `downloads.keep_screen_on` | `true` | keep the screen from dimming while downloading |
 | `downloads.throttle_kbps` | `1024` | KiB/s cap while `setThrottled(true)` (min 128) |
 
 ## Threads

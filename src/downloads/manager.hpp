@@ -66,6 +66,10 @@ public:
     // Resume interrupted downloads automatically on launch (downloads.auto_resume, default false).
     void setAutoResume(bool enabled);
     bool autoResume() const;
+    // While anything downloads the console never auto-sleeps. With downloads.keep_screen_on
+    // (default true) the screen also stays lit; otherwise it dims as usual. Main thread.
+    void setKeepScreenOn(bool enabled);
+    bool keepScreenOn() const;
     // Bandwidth cap while a streamed video plays: the player calls setThrottled(true) when it
     // starts streaming from the server and false when it stops (not for local files). The cap
     // is downloads.throttle_kbps KiB/s (default 1024, minimum 128) across all transfers.

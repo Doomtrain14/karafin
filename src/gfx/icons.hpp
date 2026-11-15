@@ -60,6 +60,7 @@ enum class Icon : uint8_t {
     Clock,
     Exit,
     Speed,
+    Brightness,
     Count,
 };
 

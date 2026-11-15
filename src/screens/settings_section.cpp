@@ -305,6 +305,9 @@ std::vector<ListItem> SettingsSection::buildItems(Category c) {
             out.push_back(toggle("Resume downloads on launch", "downloads.auto_resume", false,
                                  [](bool v) { dl::DownloadManager::instance().setAutoResume(v); },
                                  "Otherwise unfinished downloads come back paused"));
+            out.push_back(toggle("Keep screen on while downloading", "downloads.keep_screen_on", true,
+                                 [](bool v) { dl::DownloadManager::instance().setKeepScreenOn(v); },
+                                 "The console never sleeps mid-download; off lets the screen dim"));
             out.push_back(choice("Speed while streaming", "downloads.throttle_kbps",
                                  {{"128 KB/s", 128, "Keeps streaming smooth on slow Wi-Fi"},
                                   {"512 KB/s", 512, ""},

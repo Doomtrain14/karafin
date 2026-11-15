@@ -27,6 +27,7 @@ std::string g_firmware;
 
 int g_boostCount = 0;
 int g_awakeCount = 0;
+int g_screenOnCount = 0;
 
 // Valid Switch PLL steps. Level 0 leaves the system's clock alone.
 constexpr u32 kCpuLevelHz[] = {0, 1428000000, 1785000000};
@@ -263,11 +264,10 @@ void shutdown() {
         clkrstExit();
         g_clkrstReady = false;
     }
-    if (g_awakeCount > 0) {
-        appletSetMediaPlaybackState(false);
-        appletSetAutoSleepDisabled(false);
-    }
+    if (g_screenOnCount > 0) appletSetMediaPlaybackState(false);
+    if (g_awakeCount > 0) appletSetAutoSleepDisabled(false);
     g_awakeCount = 0;
+    g_screenOnCount = 0;
     if (g_nifm) nifmExit();
     if (g_psm) psmExit();
     g_psm = false;
@@ -389,20 +389,16 @@ CpuBoost::~CpuBoost() {
     applyClocksLocked();
 }
 
-AwakeLock::AwakeLock() {
+AwakeLock::AwakeLock(bool screenOn) : screenOn_(screenOn) {
     std::lock_guard lock(g_mutex);
-    if (g_awakeCount++ == 0) {
-        appletSetAutoSleepDisabled(true);
-        appletSetMediaPlaybackState(true);
-    }
+    if (g_awakeCount++ == 0) appletSetAutoSleepDisabled(true);
+    if (screenOn_ && g_screenOnCount++ == 0) appletSetMediaPlaybackState(true);
 }
 
 AwakeLock::~AwakeLock() {
     std::lock_guard lock(g_mutex);
-    if (g_awakeCount > 0 && --g_awakeCount == 0) {
-        appletSetMediaPlaybackState(false);
-        appletSetAutoSleepDisabled(false);
-    }
+    if (screenOn_ && g_screenOnCount > 0 && --g_screenOnCount == 0) appletSetMediaPlaybackState(false);
+    if (g_awakeCount > 0 && --g_awakeCount == 0) appletSetAutoSleepDisabled(false);
 }
 
 }  // namespace karafin::platform

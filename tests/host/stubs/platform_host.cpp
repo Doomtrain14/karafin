@@ -21,7 +21,7 @@ std::string describe() { return "host"; }
 
 CpuBoost::CpuBoost() = default;
 CpuBoost::~CpuBoost() = default;
-AwakeLock::AwakeLock() = default;
-AwakeLock::~AwakeLock() = default;
+AwakeLock::AwakeLock(bool screenOn) : screenOn_(screenOn) {}
+AwakeLock::~AwakeLock() { (void)screenOn_; }
 
 }  // namespace karafin::platform

@@ -334,11 +334,17 @@ void DownloadManager::Impl::updateAwake() {
     const bool any = std::any_of(queue.tasks().begin(), queue.tasks().end(), [](const Task& t) {
         return t.running && (t.info.state == State::Probing || t.info.state == State::Downloading);
     });
-    if (any && !awake) {
-        awake.emplace();
-    } else if (!any && awake) {
+    const bool screenOn = Settings::instance().get("downloads.keep_screen_on", true);
+    if (!any) {
         awake.reset();
+        return;
     }
+    if (awake && awakeScreenOn == screenOn) return;
+    // A bridging lock keeps auto-sleep off while the old lock is swapped for the new mode.
+    platform::AwakeLock bridge(false);
+    awake.reset();
+    awake.emplace(screenOn);
+    awakeScreenOn = screenOn;
 }
 
 DownloadInfo DownloadManager::Impl::snapshot(const Task& t) const {
@@ -780,6 +786,14 @@ int DownloadManager::concurrency() const { return impl_->concurrencySetting(); }
 void DownloadManager::setAutoResume(bool enabled) { Settings::instance().set("downloads.auto_resume", enabled); }
 
 bool DownloadManager::autoResume() const { return Settings::instance().get("downloads.auto_resume", false); }
+
+void DownloadManager::setKeepScreenOn(bool enabled) {
+    Settings::instance().set("downloads.keep_screen_on", enabled);
+    std::lock_guard lock(impl_->mutex);
+    impl_->updateAwake();
+}
+
+bool DownloadManager::keepScreenOn() const { return Settings::instance().get("downloads.keep_screen_on", true); }
 
 void DownloadManager::setThrottled(bool throttled) {
     Impl& m = *impl_;

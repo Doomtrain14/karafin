@@ -284,6 +284,14 @@ void drawIcon(Renderer& r, Icon icon, const Rect& box, Color color, float weight
             pen.line(12, 14, 16.2f, 9.2f);
             pen.dot(12, 14, 1.8f);
             break;
+        case Icon::Brightness:
+            pen.ring(12, 12, 4.2f);
+            for (int i = 0; i < 8; ++i) {
+                const float a = static_cast<float>(i) * kPi / 4.0f;
+                const float cs = std::cos(a), sn = std::sin(a);
+                pen.line(12 + cs * 7.4f, 12 + sn * 7.4f, 12 + cs * 9.6f, 12 + sn * 9.6f);
+            }
+            break;
     }
 }
 
@@ -294,7 +302,7 @@ const char* iconName(Icon icon) {
         "chevron-right", "chevron-up", "chevron-down", "back", "subtitles", "audio", "settings", "search",
         "home",     "library", "movie",  "tv",          "user",         "server",        "refresh",      "trash",
         "info",     "warning", "star",   "heart",       "more",         "menu",          "list",         "lock",
-        "wifi",     "filter",  "clock",  "exit",        "speed",
+        "wifi",     "filter",  "clock",  "exit",        "speed",       "brightness",
     };
     const auto i = static_cast<size_t>(icon);
     return i < sizeof(kNames) / sizeof(kNames[0]) ? kNames[i] : "?";
