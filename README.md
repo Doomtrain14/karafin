@@ -7,10 +7,6 @@
   <img src="https://img.shields.io/badge/platform-Nintendo%20Switch-e60012.svg" alt="Platform: Nintendo Switch">
 </p>
 
-<p align="center">
-  <img src="docs/images/home.jpg" alt="Karafin home screen" width="800">
-</p>
-
 Karafin is a [Jellyfin](https://jellyfin.org) client for the Nintendo Switch, written in C++20.
 It runs as a homebrew `.nro` on Atmosphère and is built with current libnx for firmware 22.
 
