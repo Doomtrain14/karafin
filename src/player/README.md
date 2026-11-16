@@ -65,7 +65,7 @@ example, choosing Japanese audio and English subtitles carries over to the follo
 | --- | --- |
 | A | Play/pause. Also: commit a seek preview, press the visible Skip button, or play the up-next episode |
 | B | Cancel the seek preview. Otherwise hide the up-next card, then hide the OSD, then exit (stops immediately, no confirmation) |
-| D-pad ←/→ (or stick) | Seek preview by `seek_step`. Holding accelerates to 3x, 6x, then 12x. Committed 0.65 s after release, or with A |
+| D-pad ←/→ (or stick) | Seek preview from the current playback position (or the pending seek target) by `seek_step`. Holding accelerates to 3x, 6x, then 12x. Committed 0.65 s after release, or with A |
 | ZL / ZR | Previous / next chapter. Without chapters (or past the last one): −/+ `skip_seconds`, unless `skip_input` is `tap` |
 | L / R | −/+ `skip_seconds`, unless `skip_input` is `tap` |
 | Y | Audio & Subtitles sheet: audio track, Off, subtitle tracks, Download subtitles, Check for downloaded subtitle |

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/banner-neon.png" alt="Karafin neon banner" width="800">
+  <img src="docs/images/banner-flat-orbit-dark.png" alt="Karafin dark Flat Orbit banner" width="800">
 </p>
 <p align="center">
   <a href="https://github.com/Doomtrain14/karafin/releases/latest"><img src="https://img.shields.io/github/v/release/Doomtrain14/karafin?sort=semver&display_name=tag" alt="Latest release"></a>

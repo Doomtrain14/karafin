@@ -1110,8 +1110,8 @@ void PlayerScreen::chapterJump(int direction) {
 
 void PlayerScreen::beginScrub() {
     if (scrubbing_) return;
-    scrubbing_ = true;
     scrubTarget_ = displayPosition();
+    scrubbing_ = true;
     scrubGrow_.springTo(1.0f, ui::theme::motion::snappy);
 }
 
