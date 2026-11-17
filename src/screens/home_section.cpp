@@ -3,12 +3,14 @@
 #include <algorithm>
 #include <format>
 
+#include "core/log.hpp"
 #include "jellyfin/client.hpp"
 #include "screens/common.hpp"
 #include "screens/library_lock.hpp"
 #include "screens/widgets/error_row.hpp"
 #include "screens/widgets/item_card.hpp"
 #include "screens/widgets/skeleton.hpp"
+#include "ui/actions.hpp"
 #include "ui/root.hpp"
 
 namespace karafin::screens {
@@ -56,6 +58,19 @@ HomeSection::HomeSection() {
         else playItem(item);
     };
     hero_->onInfo = [](const jf::BaseItem& item) { openItem(item); };
+    hero_->actions = [this](ActionMenu& m) {
+        const HeroEntry* e = hero_->current();
+        if (!e || e->item.id.empty()) return;
+        const jf::BaseItem item = e->item;
+        m.setTitle(cardTitle(item), e->tag);
+        m.section("Playback").add(item.isSeries() ? "Play next episode" : "Play", gfx::Icon::Play,
+                                  guard([this, item] { hero_->onPlay(item); }));
+        m.section("Title").add("Details", gfx::Icon::Info, [item] { openItem(item); });
+        if (hero_->count() > 1) {
+            m.add("Next featured title", gfx::Icon::ChevronRight, guard([this] { hero_->advance(1); }));
+            m.add("Previous featured title", gfx::Icon::ChevronLeft, guard([this] { hero_->advance(-1); }));
+        }
+    };
     rows_ = std::make_unique<RowStack>(page_->content(), 1);
 
     status_ = add<StatusView>();
@@ -160,6 +175,8 @@ void HomeSection::loadHero() {
                         }
                     }
                     heroDone_ = true;
+                    log::step("home", "hero: {} entries{}{}", entries->size(), entries->empty() ? "" : ", first ",
+                              entries->empty() ? std::string() : entries->front().item.id);
                     if (entries->empty() && (!latest || resumeError)) {
                         // Nothing to feature because a request failed: offer a retry instead of
                         // silently dropping the hero.
@@ -225,6 +242,7 @@ void HomeSection::loadResume(bool quiet) {
                 return;
             }
             const auto items = LibraryLock::instance().filter(r->items);
+            log::step("home", "continue watching: {} items", items.size());
             const std::string sig = signature(items);
             if (quiet && signatures_[kResume] == sig) return;
             signatures_[kResume] = sig;
@@ -244,6 +262,7 @@ void HomeSection::loadNextUp(bool quiet) {
                 return;
             }
             const auto items = LibraryLock::instance().filter(r->items);
+            log::step("home", "next up: {} items", items.size());
             const std::string sig = signature(items);
             if (quiet && signatures_[kNextUp] == sig) return;
             signatures_[kNextUp] = sig;
@@ -277,6 +296,7 @@ void HomeSection::loadViews() {
                 loadLatest(latestRows_.back(), false);
             }
             if (!libs.empty()) rows_->place(kLibraries, makeRow("My Libraries", libs, CardShape::Wide));
+            log::step("home", "libraries: {} shown, {} latest rows", libs.size(), slot);
             finishRequest(nullptr);
             tryClaimFocus();
         },

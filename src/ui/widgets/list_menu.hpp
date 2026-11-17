@@ -20,6 +20,13 @@ struct ListItem {
     bool checked = false;  // shows a check mark (radio-style menus)
     bool enabled = true;
     std::function<void()> onSelect;
+    // Custom title art (e.g. a logo) drawn instead of `title`, which stays as its text fallback.
+    // Gets the title box and the highlight amount (0 = normal, 1 = focused/inverted).
+    float titleArtHeight = 0;
+    std::function<void(Renderer&, const Rect&, float focus)> drawTitleArt;
+    // Non-focusable group label ("PLAYBACK") drawn as a muted overline; only `title` is used.
+    bool heading = false;
+    bool destructive = false;  // red title (delete, remove)
 };
 
 // Vertical menu with a white highlight that glides between rows (text inverts underneath).
@@ -67,6 +74,8 @@ public:
     ListMenu* menu() const { return menu_; }
     void setDismissOnSelect(bool v) { dismissOnSelect_ = v; }
     void setPanelWidth(float w) { panelWidth_ = w; }
+    // Draws `art` (`height` tall, top-left of the box) in place of the title text, e.g. a wordmark.
+    void setTitleArt(float height, std::function<void(Renderer&, const Rect&)> art);
 
     void layout() override;
     void update(float dt) override;
@@ -79,6 +88,8 @@ private:
     ListMenu* menu_ = nullptr;
     float panelWidth_ = 440;
     bool dismissOnSelect_ = true;
+    float titleArtHeight_ = 0;
+    std::function<void(Renderer&, const Rect&)> titleArt_;
 };
 
 }  // namespace karafin::ui

@@ -50,6 +50,8 @@ public:
     // Screen-wide button handlers, run when the focused chain did not consume the event.
     void addShortcut(Key b, std::function<void()> fn);
     bool isTop() const;
+    // + with no modal open (browsing screens show the app menu). Unset: + asks to quit.
+    std::function<void()> onAppMenu;
 
     bool onInput(const InputEvent& e) override;
     // A screen with custom gestures may consume the entire touch stream instead of widget taps.

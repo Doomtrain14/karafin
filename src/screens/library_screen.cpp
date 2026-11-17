@@ -10,6 +10,8 @@
 #include "screens/common.hpp"
 #include "screens/library_lock.hpp"
 #include "screens/widgets/item_card.hpp"
+#include "screens/main_screen.hpp"
+#include "ui/actions.hpp"
 #include "ui/root.hpp"
 #include "ui/widgets/list_menu.hpp"
 
@@ -124,10 +126,14 @@ LibraryScreen::LibraryScreen(LibrarySpec spec) : spec_(std::move(spec)) {
     status_ = add<StatusView>();
     status_->setFrame({0, kGridTop, theme::layout::screenWidth, theme::layout::screenHeight - kGridTop - 50});
 
-    addShortcut(Key::X, [this] { openSort(); });
-    addShortcut(Key::Y, [this] { openFilter(); });
-    addShortcut(Key::Minus, [this] { openJump(); });
-    setHints({{Key::X, "Sort"}, {Key::Y, "Filter"}, {Key::Minus, "A-Z"}, {Key::ZR, "Page"}});
+    actions = [this](ActionMenu& m) {
+        m.section("This page");
+        m.add("Sort by", gfx::Icon::Filter, guard([this] { openSort(); }));
+        m.add("Filter", gfx::Icon::Filter, guard([this] { openFilter(); }));
+        m.add("Jump to letter", gfx::Icon::List, guard([this] { openJump(); }));
+    };
+    onAppMenu = [] { showAppMenu(); };
+    setHints({{Key::ZR, "Page"}});
     reload();
 }
 

@@ -36,8 +36,11 @@ Dialog::Dialog(DialogSpec spec) : spec_(std::move(spec)) {
         auto* btn = row->add<Button>(b.label, gfx::Icon::None, b.style);
         btn->setPreferredSize(std::max(140.0f, btn->measure({1000, 100}).x), theme::button::height);
         btn->onActivate = [this, i] { press(i); };
+        btn->setHints({{Key::A, b.label}});
         buttons_.push_back(btn);
     }
+    if (spec_.cancelIndex >= 0 && static_cast<size_t>(spec_.cancelIndex) < spec_.buttons.size())
+        setHints({{Key::B, spec_.buttons[static_cast<size_t>(spec_.cancelIndex)].label}});
     // Long labels: share the card width instead of overflowing it (labels ellipsize).
     if (!buttons_.empty()) {
         const float avail = kCardWidth - kCardPad * 2;

@@ -231,7 +231,6 @@ void DownloadsSection::build(const dl::OfflineLibrary& library) {
                                             if (ok) dl::DownloadManager::instance().remove(key);
                                         }));
             };
-            row->refreshHints();
             track(box->addChild(std::move(row)), "item:" + key);
         }
     }
@@ -261,7 +260,6 @@ void DownloadsSection::build(const dl::OfflineLibrary& library) {
                                             if (ok) dl::DownloadManager::instance().removeGroup(serverId, seriesId);
                                         }));
             };
-            row->refreshHints();
             track(box->addChild(std::move(row)), "series:" + serverId + ":" + seriesId);
         }
     }

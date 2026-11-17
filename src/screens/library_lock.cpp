@@ -14,6 +14,7 @@
 #include "core/settings.hpp"
 #include "jellyfin/client.hpp"
 #include "screens/widgets/pin_pad.hpp"
+#include "ui/actions.hpp"
 #include "ui/root.hpp"
 #include "ui/widgets/dialog.hpp"
 #include "ui/widgets/list_menu.hpp"
@@ -505,25 +506,36 @@ void LibraryLock::removeLock(const jf::BaseItem& library, std::function<void()> 
     });
 }
 
-void LibraryLock::libraryActions(const jf::BaseItem& library, std::function<void()> onChanged) {
+void LibraryLock::addLibraryActions(ActionMenu& m, const jf::BaseItem& library, std::function<void()> onChanged) {
     if (!hasCode() || !isLocked(library.id)) {
-        lockLibrary(library, onChanged);
+        m.add("Lock library", gfx::Icon::Lock, [this, library, onChanged] { lockLibrary(library, onChanged); });
         return;
     }
-    std::vector<ListItem> items;
     if (blocks(library.id)) {
-        items.push_back({"Unlock", "Open it until you lock it again or restart Karafin", "", gfx::Icon::Lock, false, true,
-                         [this, library, onChanged] { requestUnlock(library, onChanged); }});
+        Action a;
+        a.title = "Unlock";
+        a.subtitle = "Open it until you lock it again or restart Karafin";
+        a.icon = gfx::Icon::Lock;
+        a.run = [this, library, onChanged] { requestUnlock(library, onChanged); };
+        m.add(std::move(a));
     } else {
-        items.push_back({"Lock again", "Hide it now; the code is needed to open it", "", gfx::Icon::Lock, false, true,
-                         [this, id = library.id, onChanged] {
-                             relock(id);
-                             if (onChanged) onChanged();
-                         }});
+        Action a;
+        a.title = "Lock again";
+        a.subtitle = "Hide it now; the code is needed to open it";
+        a.icon = gfx::Icon::Lock;
+        a.run = [this, id = library.id, onChanged] {
+            relock(id);
+            if (onChanged) onChanged();
+        };
+        m.add(std::move(a));
     }
-    items.push_back({"Remove lock", "Needs the code", "", gfx::Icon::Close, false, true,
-                     [this, library, onChanged] { removeLock(library, onChanged); }});
-    present(SideSheet::make(library.name, std::move(items)));
+    Action remove;
+    remove.title = "Remove lock";
+    remove.subtitle = "Needs the code";
+    remove.icon = gfx::Icon::Close;
+    remove.destructive = true;
+    remove.run = [this, library, onChanged] { removeLock(library, onChanged); };
+    m.add(std::move(remove));
 }
 
 void LibraryLock::changeCode(std::function<void()> onDone) {

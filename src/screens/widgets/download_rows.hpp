@@ -45,7 +45,7 @@ private:
 };
 
 // Downloaded movie / episode, or a downloaded series group. Focusable; A runs onActivate (play
-// or open), X toggles watched, Y deletes (the owner wires onToggleWatched / onDelete).
+// or open); X lists play / watched / delete actions (the owner wires onToggleWatched / onDelete).
 class OfflineItemRow : public ui::View {
 public:
     static constexpr float kHeight = 96;
@@ -69,14 +69,11 @@ public:
 
     std::function<void()> onToggleWatched;
     std::function<void()> onDelete;
-    // Call after wiring the callbacks: only the X / Y actions that exist are shown as hints.
-    void refreshHints();
 
     ui::Vec2 measure(ui::Vec2 available) override;
     void onFocus() override;
     void onBlur() override;
     bool activate() override;
-    bool onInput(const ui::InputEvent& e) override;
     void update(float dt) override;
     void draw(ui::Renderer& r) override;
 

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/banner-flat-orbit-dark.png" alt="Karafin dark Flat Orbit banner" width="800">
+  <img src="docs/images/banner-open-frame.png" alt="Karafin Open Frame banner" width="800">
 </p>
 <p align="center">
   <a href="https://github.com/Doomtrain14/karafin/releases/latest"><img src="https://img.shields.io/github/v/release/Doomtrain14/karafin?sort=semver&display_name=tag" alt="Latest release"></a>
@@ -49,14 +49,14 @@ offline viewing with pause and resume.
   - Long summaries open in full with A (or a tap) on detail and series pages.
   - Profile code: a profile can ask for its D-pad code before it opens, from the account
     picker or at startup. Profiles with a code show a lock.
-  - Library lock: press X on a library in the Libraries tab to lock it with a D-pad code of 4 or
+  - Library lock: press X on a library in the Libraries tab and choose **Lock library** to lock it with a D-pad code of 4 or
     6 steps. A locked library needs the code to open and its titles are left out of Home and
-    Search. Unlocking opens that one library until you lock it again (X on its tile, the lock
+    Search. Unlocking opens that one library until you lock it again (X menu on its tile, the lock
     button on its page, or **Lock now**) or restart the app. Locked titles are also left out of
     actor, genre and collection grids. The code pad also has touch arrows. This is a convenience
     lock inside Karafin, not real security: the server account can still see everything, and Favorites,
     Downloads and "More like this" are not filtered.
-  - Administrators can ask the server to scan a library for new files: Y on a library tile, the
+  - Administrators can ask the server to scan a library for new files: **Scan library** in a tile's X menu, the
     refresh button on a library page, or **Scan all libraries** in Settings > Account. Each scan
     asks for confirmation first.
 - **Playback**
@@ -148,8 +148,8 @@ The button names below are the Nintendo labels: A is the right face button and B
 | A | Select |
 | B | Back. On a main tab it returns to the tab bar, then to Home, then asks to quit |
 | L / R | Switch tabs (and seasons on a series page) |
-| X / Y / − | Context actions shown in the hint bar at the bottom of the screen (for example sort, filter, A-Z jump, play from a card) |
-| + | Quit Karafin |
+| X | Actions for the selected item and this page: play, details, mark watched, delete a download, sort, filter, A-Z jump, lock or scan a library |
+| + | App menu: jump to a tab, reconnect (offline), controls guide and quit |
 | Touch | Tap to select, drag or flick to scroll (handheld mode) |
 
 ### Player
@@ -305,9 +305,34 @@ and range/resume helpers) run on Linux with GCC 14:
 
 Source layout and module documentation start at [`src/README-ARCH.md`](src/README-ARCH.md).
 
-The icon artwork is kept in `tools/icon_source.png` (Homebrew Menu icon, with background) and
-`tools/logo_source.png` (transparent mark). Run `python tools/gen_icon.py` (requires Pillow) to
-regenerate the 256x256 NRO icon, the splash logo (`romfs/logo.png`) and the README icon.
+### Brand artwork
+
+<p align="center">
+  <img src="docs/images/icon.png" alt="Karafin app icon" width="160">
+</p>
+
+The Open Frame icon is a jellyfish inside a framed viewfinder, on the same violet glow as
+Karastream's icon. The "karafin" wordmark uses the same font size, stroke and spacing as
+Karastream's, and a small jellyfish holds the stem of the "i". The app draws the wordmark from an
+image wherever the name appears: the header, the server screen, the + menu and Settings > About.
+
+All brand artwork is generated from `tools/jelly_source.png` (the jellyfish silhouette) and the
+Comfortaa fonts in `tools/fonts` (SIL Open Font License):
+
+| File | Used for |
+| --- | --- |
+| `tools/icon_source.png` | 1024x1024 icon master (glow background, frame, jellyfish, wordmark) |
+| `assets/icon.jpg` | 256x256 NRO icon shown in the Homebrew Menu |
+| `docs/images/icon.png` | README icon |
+| `docs/images/banner-open-frame.png` | README banner |
+| `romfs/frame.png`, `romfs/jelly.png` | Splash screen: the frame and the swimming jellyfish |
+| `romfs/wordmark.png` | Light wordmark for dark backgrounds |
+| `romfs/wordmark-ink.png` | Dark (ink) wordmark for focused, light rows |
+| `src/screens/brand_art.hpp` | Generated layout constants for the splash and wordmark |
+
+Run `python tools/make_brand.py` (requires Pillow, NumPy and SciPy) to regenerate everything except
+the banner. `python tools/gen_icon.py` alone regenerates only the two icons from
+`tools/icon_source.png`.
 
 ## Contributing
 
@@ -326,6 +351,7 @@ The release `.nro` links FFmpeg and mpv statically. The pinned FFmpeg package is
 with the matching source, which means tagging the commit each release is built from.
 
 Karafin uses SDL2, mpv, FFmpeg (with averne's nvtegra hardware decoder), libass, libcurl, mbedtls,
-FreeType, HarfBuzz, libwebp, nlohmann/json and stb_image. The bundled Inter font is licensed under
-the SIL Open Font License. The prebuilt FFmpeg/mpv Switch packages come from the
+FreeType, HarfBuzz, libwebp, nlohmann/json and stb_image. The bundled Inter font and the Comfortaa
+font used for the wordmark artwork are licensed under the SIL Open Font License. The prebuilt
+FFmpeg/mpv Switch packages come from the
 [Switchfin](https://github.com/dragonflylee/switchfin) project.

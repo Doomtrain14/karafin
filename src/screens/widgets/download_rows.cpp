@@ -8,6 +8,7 @@
 #include "gfx/text.hpp"
 #include "jellyfin/client.hpp"
 #include "screens/common.hpp"
+#include "ui/actions.hpp"
 #include "ui/root.hpp"
 #include "ui/widgets/dialog.hpp"
 
@@ -213,13 +214,26 @@ OfflineItemRow::OfflineItemRow(std::string title, std::string subtitle, std::str
     setFocusable(true);
     setCullMargin(16);
     poster_ = loadPoster(posterPath, wide_ ? 124 : kPosterW, kPosterH * (wide_ ? 0.9f : 1.0f));
-}
-
-void OfflineItemRow::refreshHints() {
-    std::vector<Hint> hints;
-    if (onToggleWatched) hints.push_back({Key::X, watched_ ? "Unwatched" : "Watched"});
-    if (onDelete) hints.push_back({Key::Y, "Delete"});
-    setHints(std::move(hints));
+    actions = [this](ActionMenu& m) {
+        m.setTitle(title_, subtitle_);
+        if (onActivate) {
+            m.section(chevron_ ? "Show" : "Playback");
+            if (chevron_) m.add("Open", gfx::Icon::ChevronRight, guard([this] { onActivate(); }));
+            else m.add("Play", gfx::Icon::Play, guard([this] { onActivate(); }));
+        }
+        m.section("Download");
+        if (onToggleWatched)
+            m.add(watched_ ? "Mark as unwatched" : "Mark as watched", watched_ ? gfx::Icon::Close : gfx::Icon::Check,
+                  guard([this] { onToggleWatched(); }));
+        if (onDelete) {
+            Action a;
+            a.title = chevron_ ? "Delete all episodes" : "Delete download";
+            a.icon = gfx::Icon::Trash;
+            a.destructive = true;
+            a.run = guard([this] { onDelete(); });
+            m.add(std::move(a));
+        }
+    };
 }
 
 Vec2 OfflineItemRow::measure(Vec2 available) { return {available.x, summary_.empty() ? kHeight : kHeightWithSummary}; }
@@ -246,20 +260,6 @@ bool OfflineItemRow::activate() {
     scale.set(0.985f);
     scale.springTo(focused() ? 1.012f : 1.0f, theme::motion::bouncy);
     return View::activate();
-}
-
-bool OfflineItemRow::onInput(const InputEvent& e) {
-    if (e.pressed() && focused()) {
-        if (e.button == Key::X && onToggleWatched) {
-            onToggleWatched();
-            return true;
-        }
-        if (e.button == Key::Y && onDelete) {
-            onDelete();
-            return true;
-        }
-    }
-    return View::onInput(e);
 }
 
 void OfflineItemRow::update(float dt) {

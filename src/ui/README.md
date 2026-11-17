@@ -36,8 +36,11 @@ public:
         play->setFrame({56, 400, 160, 46});            // or use Box layouts
         play->onActivate = [this] { ... };
         setRememberedFocus(play);                     // initial focus
-        addShortcut(ui::Key::Y, [this] { toggleWatched(); });
-        setHints({{ui::Key::Y, "Watched"}});
+        actions = [this](ui::ActionMenu& m) {       // X: contextual side menu
+            m.section("Title");
+            m.add("Mark as watched", gfx::Icon::Check, guard([this] { toggleWatched(); }));
+        };
+        onAppMenu = [] { showAppMenu(); };           // +: app menu (else + confirms quitting)
         api.fetch(id, guard([this](auto&& result) { populate(result); }));  // safe async
     }
     void onShow() override {}       // became top (after transition) - refresh here
@@ -59,7 +62,8 @@ outgoing screen is captured once on the first frame and then only composited. Th
 kept between transitions (released after 3 s idle in applet mode). Pushing/popping a non-opaque screen animates
 only that screen over the (static) one below.
 `Screen::setOpaque(false)` lets the screen below show through (e.g. a player OSD over video);
-`setShowsHintBar(false)` hides the hint bar (player). Unhandled `+` opens a quit confirmation.
+`setShowsHintBar(false)` hides the hint bar (player). Unhandled `+` calls the top screen's
+`onAppMenu`, or opens a quit confirmation when it has none (or a modal is open).
 
 `sound.hpp/.cpp` provides short, synthesized navigation cues through an independent SDL audio
 device. `Root` plays them for controller navigation, select/back, and touch taps.
@@ -112,8 +116,17 @@ Custom views override `measure(available)` (natural size) and `layout()`.
 - Containers steer D-pad moves with `navigateFocus(from, dir)` (return a view, `focusBlocked()`, or
   null for spatial search). `setRememberFocus(true)` restores the last focused descendant when
   focus re-enters the container (rows, grids, menus, screens and modals do this).
-- Hints: `view->setHints({{Key::Y, "Mark watched"}})` - collected from the focused chain plus the
-  scope; "Select" (when `onActivate` is set) and "Back"/"Close" are added automatically.
+- Actions (menu-first): browsing has no hidden one-button shortcuts. Set `View::actions =
+  [](ui::ActionMenu& m) {...}`; an unconsumed X walks the focus chain (focused view -> scope) and
+  every view adds its items (`m.section("Heading")` merges same-named groups; first `setTitle`
+  wins). `ui::presentActions(menu)` shows a grouped `SideSheet`; actions run after it starts
+  closing. Build menus from cached state only (no network) and re-read state inside callbacks.
+  `Root::openActions()` opens it programmatically (e.g. an "Actions" button).
+- Hints: `view->setHints({{Key::A, "Play"}})` - collected from the focused chain plus the
+  scope; "Select" (when `onActivate` is set), "Actions" (X, when the chain has actions), "Menu"
+  (+, when the screen has `onAppMenu`) and "Back"/"Close" are added automatically.
+  Scrollable lists show ZL/ZR paging, and modal hints remain visible over the player. A modal
+  that disables B dismissal must supply its own B hint if it handles B.
 - Touch: tap focuses + activates (`onTap(local)` to customize; `onTouchDown/Cancel` for press
   feedback); drags scroll the nearest `ScrollView` on that axis with rubber-banding and inertia.
 - A screen can consume SDL touch events with `Screen::onTouchEvent`; `Root` routes them there

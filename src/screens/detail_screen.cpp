@@ -7,6 +7,7 @@
 #include "jellyfin/client.hpp"
 #include "screens/item_meta.hpp"
 #include "screens/widgets/item_card.hpp"
+#include "screens/main_screen.hpp"
 #include "ui/root.hpp"
 #include "ui/widgets/list_menu.hpp"
 #include "ui/widgets/row_carousel.hpp"
@@ -23,6 +24,7 @@ constexpr float kLogoMaxH = 130;
 }  // namespace
 
 DetailScreen::DetailScreen(std::string itemId) : itemId_(std::move(itemId)) {
+    onAppMenu = [] { showAppMenu(); };
     backdrop_ = add<Backdrop>();
     backdrop_->setFrame({0, 0, theme::layout::screenWidth, theme::layout::screenHeight});
     backdrop_->setIntensity(1.0f);

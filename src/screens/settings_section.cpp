@@ -13,6 +13,7 @@
 #include "gfx/image.hpp"
 #include "jellyfin/client.hpp"
 #include "screens/common.hpp"
+#include "screens/wordmark.hpp"
 #include "screens/library_lock.hpp"
 #include "screens/session.hpp"
 #include "ui/root.hpp"
@@ -405,8 +406,26 @@ std::vector<ListItem> SettingsSection::buildItems(Category c) {
             break;
         }
         case Category::About: {
-            out.push_back({"Karafin", "Jellyfin for Nintendo Switch", "Version " KARAFIN_VERSION, gfx::Icon::Star, false,
-                           true, {}});
+            ListItem app{"Karafin", "Jellyfin for Nintendo Switch", "Version " KARAFIN_VERSION, gfx::Icon::Star, false,
+                         true, {}};
+            constexpr float kMarkHeight = 22;
+            auto mark = std::make_shared<Wordmark>(kMarkHeight);
+            auto inkMark = std::make_shared<Wordmark>(kMarkHeight, true);
+            app.titleArtHeight = kMarkHeight;
+            app.drawTitleArt = [mark, inkMark](Renderer& r, const Rect& box, float focus) {
+                // Crossfade to the dark variant as the white highlight slides under the row.
+                if (focus < 1.0f) {
+                    r.pushAlpha(1.0f - focus);
+                    mark->draw(r, {box.x, box.y});
+                    r.popAlpha();
+                }
+                if (focus > 0.0f) {
+                    r.pushAlpha(focus);
+                    inkMark->draw(r, {box.x, box.y});
+                    r.popAlpha();
+                }
+            };
+            out.push_back(std::move(app));
             if (client) {
                 const auto info = client->serverInfo();
                 out.push_back({"Server", info.name, info.version.empty() ? "" : "Jellyfin " + info.version,

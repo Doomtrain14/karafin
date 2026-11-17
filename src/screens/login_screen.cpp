@@ -14,6 +14,7 @@
 #include "screens/session.hpp"
 #include "screens/widgets/avatar_tile.hpp"
 #include "screens/widgets/quick_connect_modal.hpp"
+#include "ui/actions.hpp"
 #include "ui/root.hpp"
 #include "ui/widgets/button.hpp"
 #include "ui/widgets/dialog.hpp"
@@ -121,7 +122,6 @@ void LoginScreen::buildUsers() {
             auto* tile = users_->add<AvatarTile>(u.name, url);
             tile->setMarked(true);
             tile->setCaption("Signed in");
-            tile->setHints({{Key::Y, "Forget"}});
             const jf::StoredUser user = u;
             if (LibraryLock::profileNeedsCode(client_->serverId(), u.id)) tile->add<ProfileLockMark>();
             tile->onActivate = [this, user] {
@@ -131,13 +131,21 @@ void LoginScreen::buildUsers() {
                                                        }),
                                                        {});
             };
-            tile->onSecondary = [this, user] {
-                present(Dialog::confirm("Forget " + user.name + "?", "The saved sign-in on this console will be removed.",
-                                        "Forget", "Cancel", guard([this, id = user.id](bool ok) {
-                                            if (!ok) return;
-                                            jf::AccountStore::instance().removeUser(client_->serverId(), id);
-                                            timeline().after(0.0f, [this] { buildUsers(); }, lifetime());
-                                        })));
+            tile->actions = [this, user](ActionMenu& m) {
+                m.setTitle(user.name, "Saved sign-in");
+                Action forget;
+                forget.title = "Forget sign-in";
+                forget.icon = gfx::Icon::Trash;
+                forget.destructive = true;
+                forget.run = guard([this, user] {
+                    present(Dialog::confirm("Forget " + user.name + "?", "The saved sign-in on this console will be removed.",
+                                            "Forget", "Cancel", guard([this, id = user.id](bool ok) {
+                                                if (!ok) return;
+                                                jf::AccountStore::instance().removeUser(client_->serverId(), id);
+                                                timeline().after(0.0f, [this] { buildUsers(); }, lifetime());
+                                            })));
+                });
+                m.section("Account").add(std::move(forget));
             };
             shownIds.push_back(u.id);
         }

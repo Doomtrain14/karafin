@@ -4,16 +4,42 @@
 
 #include "jellyfin/client.hpp"
 #include "screens/common.hpp"
+#include "ui/actions.hpp"
 #include "ui/root.hpp"
 
 namespace karafin::screens {
 
 using namespace karafin::ui;
 
+namespace {
+std::string typeLabel(const jellyfin::BaseItem& item) {
+    if (item.type == "BoxSet") return "Collection";
+    if (item.type == "MusicVideo") return "Music video";
+    if (item.type == "CollectionFolder" || item.type == "UserView") return "Library";
+    return item.type;
+}
+}  // namespace
+
 ItemCard::ItemCard(CardShape shape, bool showTitles) : PosterCard(shape, showTitles) {
     onActivate = [this] {
         if (onOpen) onOpen(item_);
         else openItem(item_);
+    };
+    actions = [this](ActionMenu& m) {
+        if (loading_ || item_.id.empty()) return;
+        m.setTitle(cardTitle(item_), typeLabel(item_));
+        if (item_.isPlayable() || item_.isSeries()) {
+            m.section("Playback");
+            if (item_.isPlayable()) m.add("Play", gfx::Icon::Play, guard([this] { playItem(item_); }));
+            else m.add("Play next episode", gfx::Icon::Play, guard([this] { playSeries(item_.id, token_); }));
+        }
+        m.section("Title");
+        const bool folder = item_.isFolder && !item_.isSeries() && !item_.isSeason();
+        m.add(folder ? "Open" : "Details", gfx::Icon::Info, guard([this] { onActivate(); }));
+        if (item_.isPlayable() || item_.isSeries() || item_.isSeason())
+            m.add(item_.userData.played ? "Mark as unwatched" : "Mark as watched",
+                  item_.userData.played ? gfx::Icon::Close : gfx::Icon::Check, guard([this] { toggleWatched(); }));
+        if (extraActions) extraActions(m);
     };
 }
 
@@ -53,29 +79,6 @@ void ItemCard::setItem(const jellyfin::BaseItem& item) {
     loading_ = false;
     item_ = item;
     bindCard(*this, item_, &imageUrl_);
-    std::vector<Hint> hints;
-    if (item_.isPlayable() || item_.isSeries()) hints.push_back({Key::X, "Play"});
-    if (item_.isPlayable() || item_.isSeries() || item_.isSeason()) hints.push_back({Key::Y, item_.userData.played ? "Unwatched" : "Watched"});
-    setHints(std::move(hints));
-}
-
-bool ItemCard::onInput(const InputEvent& e) {
-    if (onKey && onKey(e)) return true;
-    if (e.pressed() && e.button == Key::X) {
-        if (item_.isPlayable()) {
-            playItem(item_);
-            return true;
-        }
-        if (item_.isSeries()) {
-            playSeries(item_.id, token_);
-            return true;
-        }
-    }
-    if (e.pressed() && e.button == Key::Y && (item_.isPlayable() || item_.isSeries() || item_.isSeason())) {
-        toggleWatched();
-        return true;
-    }
-    return PosterCard::onInput(e);
 }
 
 void ItemCard::toggleWatched() {

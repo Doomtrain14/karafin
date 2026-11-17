@@ -8,6 +8,7 @@
 #include "jellyfin/client.hpp"
 #include "screens/common.hpp"
 #include "screens/detail_screen.hpp"
+#include "ui/actions.hpp"
 #include "ui/root.hpp"
 
 namespace karafin::screens {
@@ -27,10 +28,20 @@ EpisodeRow::EpisodeRow(const jf::BaseItem& episode, bool showDownload) {
     thumb_ = add<ImageView>();
     thumb_->setRadius(theme::radius::sm);
     if (showDownload) download_ = add<DownloadButton>(true);
-    setHints({{Key::X, "Details"}, {Key::Y, "Watched"}});
     onActivate = [this] {
         if (item_.isVirtual()) toast("This episode isn't in your library", ToastKind::Info, gfx::Icon::Info);
         else playItem(item_);
+    };
+    actions = [this](ActionMenu& m) {
+        if (item_.id.empty()) return;
+        m.setTitle(title_, item_.seriesName.empty() ? std::string("Episode") : item_.seriesName);
+        if (!item_.isVirtual()) m.section("Playback").add("Play", gfx::Icon::Play, guard([this] { playItem(item_); }));
+        m.section("Episode");
+        m.add("Details", gfx::Icon::Info,
+              guard([this] { nav().push(std::make_unique<DetailScreen>(item_.id), Transition::Zoom); }));
+        if (!item_.isVirtual())
+            m.add(item_.userData.played ? "Mark as unwatched" : "Mark as watched",
+                  item_.userData.played ? gfx::Icon::Close : gfx::Icon::Check, guard([this] { toggleWatched(); }));
     };
     setItem(episode);
 }
@@ -62,7 +73,6 @@ void EpisodeRow::updateText() {
     meta_ = joinDots({formatRuntime(item_.runTimeTicks),
                       item_.communityRating > 0 ? "\xE2\x98\x85 " + formatRating(item_.communityRating) : "", premiere,
                       left, item_.isVirtual() ? "Missing" : ""});
-    setHints({{Key::X, "Details"}, {Key::Y, item_.userData.played ? "Unwatched" : "Watched"}});
 }
 
 Vec2 EpisodeRow::measure(Vec2 available) {
@@ -81,20 +91,6 @@ void EpisodeRow::onFocus() {
     else focus_.springTo(1.0f, theme::motion::snappy);
 }
 void EpisodeRow::onBlur() { focus_.springTo(0.0f, theme::motion::snappy); }
-
-bool EpisodeRow::onInput(const InputEvent& e) {
-    if (e.pressed() && focused()) {
-        if (e.button == Key::X) {
-            nav().push(std::make_unique<DetailScreen>(item_.id), Transition::Zoom);
-            return true;
-        }
-        if (e.button == Key::Y) {
-            toggleWatched();
-            return true;
-        }
-    }
-    return View::onInput(e);
-}
 
 void EpisodeRow::toggleWatched() {
     auto client = jf::currentClient();

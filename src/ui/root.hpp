@@ -10,7 +10,8 @@
 //
 // Input routing for a button event: focused view -> its ancestors -> scope (modal or screen).
 // Unconsumed directions move focus; unconsumed B pops the screen (Screen::onBack first);
-// unconsumed + asks to quit.
+// unconsumed X opens the focus chain's actions (ui/actions.hpp); unconsumed + opens the screen's
+// app menu (Screen::onAppMenu) when no modal is up, otherwise asks to quit.
 
 #include <functional>
 #include <memory>
@@ -19,6 +20,7 @@
 
 #include "core/app.hpp"
 #include "gfx/renderer.hpp"
+#include "ui/actions.hpp"
 #include "ui/anim.hpp"
 #include "ui/focus.hpp"
 #include "ui/hint_bar.hpp"
@@ -59,6 +61,12 @@ public:
     bool touchMode() const { return touchMode_; }
     // Asks the user to confirm quitting (what an unhandled + does).
     void confirmQuit();
+    // X: gathers `View::actions` from the focus chain and presents them (false when there are none).
+    bool openActions();
+    bool hasActions() const;
+    bool collectActions(ActionMenu& menu) const;
+    // Hands focus back to the scope below a dismissing modal now instead of at the end of the frame.
+    void updateScope();
     void setShowStats(bool v) { showStats_ = v; }
 
     // AppDelegate
@@ -73,7 +81,6 @@ public:
 private:
     void dispatch(const InputEvent& e);
     void handleTouch(const SDL_Event& e);
-    void updateScope();
     void collectHints(std::vector<Hint>& out) const;
     View* layerRoot() const;
     void renderStats(Renderer& r);

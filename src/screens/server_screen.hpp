@@ -6,6 +6,7 @@
 #include "core/cancel.hpp"
 #include "jellyfin/models.hpp"
 #include "screens/widgets/busy_modal.hpp"
+#include "screens/wordmark.hpp"
 #include "ui/anim.hpp"
 #include "ui/screen.hpp"
 #include "ui/scroll.hpp"
@@ -39,6 +40,7 @@ private:
     bool visible_ = false;
     float rediscoverIn_ = 0;
     float t_ = 0;
+    Wordmark wordmark_{34};
     ui::Ref<BusyModal> busy_;
     CancelToken discoverToken_;
     CancelToken connectToken_;

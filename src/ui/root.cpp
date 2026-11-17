@@ -199,7 +199,57 @@ void Root::dispatch(const InputEvent& e) {
         if (s && !s->onBack() && nav_.depth() > 1) nav_.pop();
         return;
     }
-    if (e.button == Key::Plus && e.pressed()) confirmQuit();
+    if (e.button == Key::X && e.pressed()) {
+        openActions();
+        return;
+    }
+    if (e.button == Key::Plus && e.pressed()) {
+        Screen* s = nav_.top();
+        if (!topModal() && s && s->onAppMenu && !nav_.transitioning()) {
+            auto fn = s->onAppMenu;
+            fn();
+            return;
+        }
+        confirmQuit();
+    }
+}
+
+bool Root::collectActions(ActionMenu& menu) const {
+    if (topModal()) return false;
+    View* scope = focusScope();
+    if (!scope) return false;
+    View* f = focus_.focused();
+    if (f && f->isDescendantOf(scope)) {
+        for (View* v = f; v; v = v->parent()) {
+            if (v->actions) v->actions(menu);
+            if (v == scope) break;
+        }
+    } else if (scope->actions) {
+        scope->actions(menu);
+    }
+    return !menu.empty();
+}
+
+bool Root::hasActions() const {
+    if (topModal()) return false;
+    View* scope = focusScope();
+    if (!scope) return false;
+    View* f = focus_.focused();
+    if (f && f->isDescendantOf(scope)) {
+        for (View* v = f; v; v = v->parent()) {
+            if (v->actions) return true;
+            if (v == scope) break;
+        }
+        return false;
+    }
+    return static_cast<bool>(scope->actions);
+}
+
+bool Root::openActions() {
+    if (nav_.transitioning()) return false;
+    ActionMenu menu;
+    if (!collectActions(menu)) return false;
+    return presentActions(std::move(menu), Key::X);
 }
 
 void Root::handleTouch(const SDL_Event& e) {
@@ -306,7 +356,8 @@ void Root::collectHints(std::vector<Hint>& out) const {
     };
     View* scope = focusScope();
     View* f = focus_.focused();
-    if (f && scope && f->isDescendantOf(scope)) {
+    const bool focusInScope = f && scope && f->isDescendantOf(scope);
+    if (focusInScope) {
         for (View* v = f; v; v = v->parent()) {
             for (const auto& h : v->hints()) add(h);
             if (v == scope) break;
@@ -314,9 +365,15 @@ void Root::collectHints(std::vector<Hint>& out) const {
     } else if (scope) {
         for (const auto& h : scope->hints()) add(h);
     }
-    if (f && f->onActivate) add({Key::A, "Select"});
-    if (topModal()) add({Key::B, "Close"});
-    else if (nav_.depth() > 1) add({Key::B, "Back"});
+    if (focusInScope && f->onActivate) add({Key::A, "Select"});
+    if (hasActions()) add({Key::X, "Actions"});
+    if (const Modal* modal = topModal()) {
+        if (modal->dismissOnBack()) add({Key::B, "Close"});
+    } else if (nav_.depth() > 1) {
+        add({Key::B, "Back"});
+    }
+    if (!topModal())
+        if (const Screen* s = nav_.top(); s && s->onAppMenu) add({Key::Plus, "Menu"});
     // Insertion sort: stable, allocation-free (std::stable_sort allocates a buffer), n is tiny.
     for (size_t i = 1; i < out.size(); ++i)
         for (size_t j = i; j > 0 && static_cast<int>(out[j].button) < static_cast<int>(out[j - 1].button); --j)
@@ -366,7 +423,7 @@ void Root::onUpdate(double dtD) {
     hintBar_.setHints(hints_);
     hintBar_.update(dt);
     const Screen* top = nav_.top();
-    const float hintTarget = (top && top->showsHintBar()) ? 1.0f : 0.0f;
+    const float hintTarget = (topModal() || (top && top->showsHintBar())) ? 1.0f : 0.0f;
     hintVisibility_ += (hintTarget - hintVisibility_) * std::min(1.0f, dt * 10.0f);
 }
 

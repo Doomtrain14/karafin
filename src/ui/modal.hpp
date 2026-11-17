@@ -27,6 +27,7 @@ public:
     void setDim(float a) { dim_ = a; }
     float dim() const { return dim_; }
     void setDismissOnBack(bool v) { dismissOnBack_ = v; }
+    bool dismissOnBack() const { return dismissOnBack_; }
     void setDismissOnBackdropTap(bool v) { dismissOnBackdropTap_ = v; }
 
     std::function<void()> onDismissed;  // after removal

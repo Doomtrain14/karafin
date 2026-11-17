@@ -16,7 +16,7 @@
 
 namespace karafin::screens {
 
-// Search: a field that opens the system keyboard (A, or Y anywhere in the section), debounced
+// Search: a field that opens the system keyboard (A, or Search in the X menu), debounced
 // queries grouped into Movies / Shows / Episodes rows, and recent searches.
 class SearchSection : public SectionView {
 public:
@@ -25,7 +25,6 @@ public:
 
     void onSectionShown(bool first) override;
     float headerScrim() const override { return 1.0f; }
-    bool onInput(const ui::InputEvent& e) override;
 
 private:
     class Field;

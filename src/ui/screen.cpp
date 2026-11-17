@@ -136,10 +136,12 @@ void Navigator::begin(Screen* from, Screen* to, Transition t, bool reverse) {
     duration_ = theme::motion::screenTransition;
     fromCaptured_ = false;
     animating_ = from && to && t != Transition::None;
+    if (animating_) log::step("ui", "transition start");
     if (!animating_) finish();
 }
 
 void Navigator::finish() {
+    if (animating_) log::step("ui", "transition done");
     animating_ = false;
     Screen* shown = to_;
     from_ = to_ = nullptr;
@@ -246,6 +248,7 @@ void Navigator::renderComposite(Renderer& r) {
     auto renderInto = [&](gfx::RenderTarget& rt, Screen* s) {
         const bool outgoing = s == from_ && &rt == &rtFrom_;
         if (outgoing && fromCaptured_ && capturedW_ == rt.width() && capturedH_ == rt.height()) return;
+        log::step("ui", "transition renders {} screen", outgoing ? "outgoing" : "incoming");
         r.pushTarget(rt, true, Color::transparent());
         s->render(r);
         r.popTarget();

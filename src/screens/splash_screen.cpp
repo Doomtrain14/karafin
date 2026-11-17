@@ -10,6 +10,7 @@
 #include "downloads/manager.hpp"
 #include "gfx/image.hpp"
 #include "gfx/text.hpp"
+#include "screens/brand_art.hpp"
 #include "screens/common.hpp"
 #include "screens/library_lock.hpp"
 #include "screens/session.hpp"
@@ -24,8 +25,84 @@ namespace jf = karafin::jellyfin;
 namespace {
 constexpr float kMinColdTime = 1.3f;
 constexpr float kMinWarmTime = 0.35f;
-const gfx::TextStyle kWordmark{42, gfx::FontWeight::SemiBold, 1.0f, 0.6f};
 constexpr float kIcon = 176.0f;
+constexpr float kWordmarkHeight = 40.0f;  // Karastream's splash draws its wordmark.png this tall
+// Swimming in place, tools/make_brand.py swim() animated: each stroke squeezes the bell (narrower,
+// longer) and darts the jellyfish along its lean; it relaxes and drifts back while a wave runs
+// down the tentacles.
+constexpr float kSwimPeriod = 1.6f;    // seconds per stroke
+constexpr float kSwimRise = 8.0f;      // dart along the lean at full contraction (px of a kIcon mark)
+constexpr float kSwimSqueeze = 0.22f;  // bell rim narrowing at full contraction
+constexpr float kSwimBellStretch = 0.10f;
+constexpr float kSwimTailStretch = 0.12f;
+constexpr int kSwimBands = 32;  // the sprite is drawn in bands across its axis, each sheared to follow
+
+// Decode at the drawn size: the area-averaged shrink stays smooth, while GL minifying the
+// full-size texture (no mipmaps) leaves jagged edges. The art is made at twice the docked size.
+gfx::ImagePtr loadArt(const char* name, float width, float height) {
+    gfx::ImageRequest req;
+    req.url = paths::romfs(name);
+    req.width = static_cast<int>(std::ceil(width * ui::displayScale()));
+    req.height = static_cast<int>(std::ceil(height * ui::displayScale()));
+    req.fit = gfx::ImageFit::Fill;
+    return gfx::ImageCache::instance().load(req);
+}
+
+// Bell contraction 0..1 over one stroke: a quick squeeze, then a slower relaxation.
+float contraction(float phase) {
+    constexpr float kSqueeze = 0.35f;
+    if (phase < kSqueeze) return 0.5f - 0.5f * std::cos(gfx::kPi * phase / kSqueeze);
+    return 0.5f + 0.5f * std::cos(gfx::kPi * (phase - kSqueeze) / (1.0f - kSqueeze));
+}
+
+// The jellyfish in the `mark` square at time `t`. Works in romfs/jelly.png's source px (x across,
+// y down the body axis): each band of rows is squeezed about the axis, offset by the tentacle wave
+// and stretched along the axis, then the whole jellyfish is leaned and placed.
+void drawSwimmingJelly(gfx::Renderer& r, const gfx::Texture& tex, const Rect& mark, float t) {
+    using namespace brand;
+    const float phase = std::fmod(t / kSwimPeriod, 1.0f);
+    const float c = contraction(phase);
+    const float w = kJellySrcW, h = kJellySrcH, pad = kJellyPad;
+    const float rim = kSwimRim * h;
+    const float lean = kJellyLeanDeg * gfx::kPi / 180.0f;
+    const float k = kJellyScale * mark.w;  // screen px per source px
+    const float rise = kSwimRise * c * mark.w / kIcon;
+    const gfx::Affine place = gfx::Affine::translate(mark.x + kJellyCX * mark.w + std::sin(lean) * rise,
+                                                     mark.y + kJellyCY * mark.h - std::cos(lean) * rise) *
+                              gfx::Affine::rotate(lean) * gfx::Affine::scale(k, k) *
+                              gfx::Affine::translate(-w * 0.5f, -h * 0.5f);
+    auto along = [&](float y) {
+        const float bell = 1.0f + kSwimBellStretch * c, tail = 1.0f + kSwimTailStretch * c;
+        return (y <= rim ? y * bell : rim * bell + (y - rim) * tail) - 0.012f * h * c;
+    };
+    auto across = [&](float y) {
+        const float v = std::clamp(y / rim, 0.0f, 1.0f);
+        return 1.0f - kSwimSqueeze * c * v * std::sqrt(v);
+    };
+    auto wave = [&](float y) {
+        const float s = std::clamp((y - rim) / (h - rim), 0.0f, 1.0f);
+        return kSwimWave * w * s * std::sqrt(s) * std::sin(2.0f * gfx::kPi * phase - kSwimWaveTravel * gfx::kPi * s);
+    };
+    const float top = -pad, bottom = h + pad, step = (bottom - top) / kSwimBands;
+    const float cx = w * 0.5f;
+    // Neighbouring bands share their edge exactly (same position and wave there), so with hard
+    // quad edges they join without seams or double coverage; the sprite's margin and alpha keep the
+    // outline smooth.
+    for (int i = 0; i < kSwimBands; ++i) {
+        const float y0 = top + step * static_cast<float>(i);
+        const float y1 = i + 1 == kSwimBands ? bottom : y0 + step;
+        const float dy = (along(y1) - along(y0)) / (y1 - y0);
+        const float dx = (wave(y1) - wave(y0)) / (y1 - y0);
+        const float sx = across((y0 + y1) * 0.5f);
+        const gfx::Affine band{sx, 0.0f, dx, dy, cx - cx * sx + wave(y0) - y0 * dx, along(y0) - y0 * dy};
+        r.pushTransform(place * band);
+        r.drawImage(tex, {-pad, y0, w + 2 * pad, y1 - y0},
+                    {.fit = gfx::ImageFit::Fill,
+                     .uv = {0.0f, (y0 + pad) / (h + 2 * pad), 1.0f, (y1 - y0) / (h + 2 * pad)},
+                     .antialias = false});
+        r.popTransform();
+    }
+}
 }  // namespace
 
 SplashScreen::SplashScreen(bool coldStart) : coldStart_(coldStart) {
@@ -40,13 +117,12 @@ SplashScreen::SplashScreen(bool coldStart) : coldStart_(coldStart) {
     problem_ = add<StatusView>();
     problem_->setFrame({0, 300, theme::layout::screenWidth, 380});
     logo_.springTo(1.0f, SpringSpec{0.9f, 0.78f});
-    gfx::ImageRequest req;
-    req.url = paths::romfs("logo.png");
-    // Decode at the drawn size: the area-averaged shrink stays smooth, while GL minifying the
-    // full-size texture (no mipmaps) leaves jagged edges.
-    req.width = req.height = static_cast<int>(std::ceil(kIcon * ui::displayScale()));
-    req.fit = gfx::ImageFit::Fill;
-    icon_ = gfx::ImageCache::instance().load(req);
+    frame_ = loadArt("frame.png", kIcon, kIcon);
+    const float jellyScale = brand::kJellyScale * kIcon;
+    jelly_ = loadArt("jelly.png", (brand::kJellySrcW + 2 * brand::kJellyPad) * jellyScale,
+                     (brand::kJellySrcH + 2 * brand::kJellyPad) * jellyScale);
+    const float ws = kWordmarkHeight / brand::kWordmarkRef;
+    wordmark_ = loadArt("wordmark.png", brand::kWordmarkW * ws, brand::kWordmarkH * ws);
 }
 
 SplashScreen::~SplashScreen() { token_.cancel(); }
@@ -80,6 +156,7 @@ void SplashScreen::restore() {
     client_ = jf::Client::fromStored(last->server, &last->user);
     client_->validateSession().then(
         [this](jf::Result<jf::UserDto> r) {
+            log::mark("screens", "session check: {}", r ? "ok" : r.error.describe());
             if (r) {
                 outcome_ = Outcome::Home;
             } else if (r.error.kind == jf::ErrorKind::Unauthorized) {
@@ -213,21 +290,31 @@ void SplashScreen::draw(Renderer& r) {
     r.pushTransform(gfx::Affine::scaleAround(s, center));
     r.pushAlpha(a);
     const Rect icon{center.x - kIcon * 0.5f, center.y - 180.0f, kIcon, kIcon};
-    // The mark floats gently while a soft glow breathes behind it.
-    const float bob = std::sin(t * 1.7f) * 5.0f;
-    const float pulse = 0.5f + 0.5f * std::sin(t * 1.7f - 0.6f);
+    // The glow brightens with each stroke of the swimming jellyfish.
+    const float c = contraction(std::fmod(t / kSwimPeriod, 1.0f));
     const Rect glow = icon.inset(18);
-    r.drawShadow(glow, glow.w * 0.5f, 70 + 20 * pulse, color::accent.withAlpha(0.18f + 0.14f * pulse));
-    if (const gfx::Texture* tex = icon_ ? icon_->texture() : nullptr) {
-        const Rect mark{icon.x, icon.y + bob, icon.w, icon.h};
-        r.drawImage(*tex, mark, {.fit = gfx::ImageFit::Fill});
+    r.drawShadow(glow, glow.w * 0.5f, 70 + 20 * c, color::accent.withAlpha(0.18f + 0.14f * c));
+    if (const gfx::Texture* tex = frame_ ? frame_->texture() : nullptr)
+        r.drawImage(*tex, icon, {.fit = gfx::ImageFit::Fill});
+    if (const gfx::Texture* tex = jelly_ ? jelly_->texture() : nullptr) {
+        if (!artLogged_) {
+            artLogged_ = true;
+            log::mark("screens", "splash art drawn ({}x{})", tex->width(), tex->height());
+        }
+        drawSwimmingJelly(r, *tex, icon, t);
     }
-    auto layout = gfx::text::layout("Karafin", kWordmark);
-    const Vec2 pos{center.x - layout->width * 0.5f, icon.bottom() + 22};
-    r.drawText(*layout, pos, color::textPrimary);
+    // Same glyph size and position as Karastream's wordmark; the jellyfish on the i may rise above it.
+    const float ws = kWordmarkHeight / brand::kWordmarkRef;
+    const float wordTop = icon.bottom() + 30;
+    if (const gfx::Texture* tex = wordmark_ ? wordmark_->texture() : nullptr) {
+        const Rect word{center.x - brand::kWordmarkW * ws * 0.5f, wordTop + brand::kWordmarkOffsetY * ws,
+                        brand::kWordmarkW * ws, brand::kWordmarkH * ws};
+        r.drawImage(*tex, word, {.fit = gfx::ImageFit::Fill});
+    }
     const float tagA = std::clamp((t_ - 0.45f) / 0.5f, 0.0f, 1.0f);
     auto tag = gfx::text::layout("Jellyfin for Nintendo Switch", type::headline);
-    r.drawText(*tag, {center.x - tag->width * 0.5f, pos.y + layout->height + 6}, color::textSecondary.mulAlpha(tagA));
+    r.drawText(*tag, {center.x - tag->width * 0.5f, wordTop + kWordmarkHeight + 18},
+               color::textSecondary.mulAlpha(tagA));
     r.popAlpha();
     r.popTransform();
 }

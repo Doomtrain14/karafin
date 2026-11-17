@@ -11,7 +11,7 @@
 
 namespace karafin::screens {
 
-// PosterCard bound to a Jellyfin item. A opens it, X plays it (resume prompt), Y toggles watched.
+// PosterCard bound to a Jellyfin item. A opens it; X lists play / details / watched actions.
 class ItemCard : public ui::PosterCard {
 public:
     explicit ItemCard(ui::CardShape shape = ui::CardShape::Poster, bool showTitles = true);
@@ -25,10 +25,9 @@ public:
 
     // Overrides the default "open item" action.
     std::function<void(const jellyfin::BaseItem&)> onOpen;
-    // Gets button presses first; return true to consume them (replaces X / Y handling).
-    std::function<bool(const ui::InputEvent&)> onKey;
+    // Appends more X actions after the card's own (e.g. library lock options).
+    std::function<void(ui::ActionMenu&)> extraActions;
 
-    bool onInput(const ui::InputEvent& e) override;
     void update(float dt) override;
     void drawOverlay(ui::Renderer& r) override;
 

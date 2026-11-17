@@ -14,7 +14,8 @@
 
 namespace karafin::screens {
 
-// Animated logo while the last session is restored (fromStored + validateSession):
+// Animated logo (the jellyfish swims in place inside its frame) while the last session is
+// restored (fromStored + validateSession):
 // success -> Home, 401 -> sign-in, unreachable -> offer offline downloads / retry / change
 // server, nothing saved -> server selection. Shows the applet-mode memory warning once. A profile that
 // asks for its lock code asks before Home; backing out goes to that server's sign-in page.
@@ -47,9 +48,12 @@ private:
     bool warningChecked_ = false;
     bool navigated_ = false;
     bool started_ = false;
+    bool artLogged_ = false;
     ui::Animated<float> logo_{0.0f};
     ui::Animated<float> lift_{0.0f};
-    gfx::ImagePtr icon_;
+    gfx::ImagePtr frame_;
+    gfx::ImagePtr jelly_;
+    gfx::ImagePtr wordmark_;
     ui::Spinner* spinner_ = nullptr;
     ui::Label* statusText_ = nullptr;
     StatusView* problem_ = nullptr;

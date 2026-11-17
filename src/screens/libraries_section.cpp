@@ -8,6 +8,7 @@
 #include "screens/library_lock.hpp"
 #include "screens/library_screen.hpp"
 #include "screens/widgets/item_card.hpp"
+#include "ui/actions.hpp"
 #include "ui/root.hpp"
 #include "ui/theme.hpp"
 
@@ -88,7 +89,7 @@ LibrariesSection::LibrariesSection() {
                 spec.filters = "IsFavorite";
                 nav().push(std::make_unique<LibraryScreen>(std::move(spec)));
             };
-            card.onKey = nullptr;
+            card.extraActions = nullptr;
             if (LockMark* mark = lockMark(card)) mark->setVisible(false);
         } else {
             bindLibrary(card, lib);
@@ -147,21 +148,10 @@ void LibrariesSection::bindLibrary(ItemCard& card, const jf::BaseItem& lib) {
         mark->setBlocked(blocked);
     }
     card.onOpen = nullptr;
-    const bool admin = isAdmin();
-    std::vector<Hint> hints{{Key::X, locked ? "Lock options" : "Lock"}};
-    if (admin) hints.push_back({Key::Y, "Scan library"});
-    card.setHints(std::move(hints));
-    card.onKey = [this, lib, admin](const InputEvent& e) {
-        if (!e.pressed()) return false;
-        if (e.button == Key::X) {
-            LibraryLock::instance().libraryActions(lib, guard([this] { refreshCards(); }));
-            return true;
-        }
-        if (e.button == Key::Y && admin) {
-            scanLibrary(lib.id, lib.name);
-            return true;
-        }
-        return false;
+    card.extraActions = [this, lib](ActionMenu& m) {
+        m.section("Library");
+        LibraryLock::instance().addLibraryActions(m, lib, guard([this] { refreshCards(); }));
+        if (isAdmin()) m.add("Scan library", gfx::Icon::Refresh, [lib] { scanLibrary(lib.id, lib.name); });
     };
 }
 

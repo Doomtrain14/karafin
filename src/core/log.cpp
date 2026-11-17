@@ -42,6 +42,7 @@ std::string g_path;
 uint64_t g_sessionBytes = 0;
 std::atomic<int> g_level{static_cast<int>(Level::Info)};
 std::atomic<bool> g_stdout{false};
+std::atomic<double> g_syncUntil{0.0};  // seconds since start; see syncFor()
 const auto g_start = std::chrono::steady_clock::now();
 
 char levelChar(Level l) {
@@ -188,8 +189,13 @@ void flush() {
     g_cv.notify_one();
 }
 
-void write(Level level, std::string_view tag, std::string_view message) {
+void syncFor(double seconds) { g_syncUntil.store(secondsSinceStart() + seconds, std::memory_order_relaxed); }
+
+bool syncing() { return secondsSinceStart() < g_syncUntil.load(std::memory_order_relaxed); }
+
+void write(Level level, std::string_view tag, std::string_view message, bool sync) {
     const double t = secondsSinceStart();
+    if (t < g_syncUntil.load(std::memory_order_relaxed)) sync = true;
     const std::string_view thread = currentThreadName();
     char prefix[96];
     const int n = std::snprintf(prefix, sizeof prefix, "[%9.3f] %c/%.*s [%.*s] ", t, levelChar(level),
@@ -198,7 +204,7 @@ void write(Level level, std::string_view tag, std::string_view message) {
     const size_t prefixLen = n > 0 ? std::min<size_t>(static_cast<size_t>(n), sizeof prefix - 1) : 0;
 
     bool queued = false;
-    if (level < Level::Warn) {
+    if (level < Level::Warn && !sync) {
         std::lock_guard lock(g_mutex);
         if (g_writer && !g_stop) {
             g_pending.append(prefix, prefixLen);

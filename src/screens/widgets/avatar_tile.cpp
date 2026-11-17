@@ -45,15 +45,6 @@ bool AvatarTile::activate() {
     return View::activate();
 }
 
-bool AvatarTile::onInput(const InputEvent& e) {
-    if (e.pressed() && e.button == Key::Y && focused() && onSecondary) {
-        auto fn = onSecondary;
-        fn();
-        return true;
-    }
-    return View::onInput(e);
-}
-
 void AvatarTile::update(float dt) {
     focus_.update(dt);
     if (image_ && image_->ready() && reveal_.target() < 1.0f) reveal_.tweenTo(1.0f, theme::motion::imageFade);

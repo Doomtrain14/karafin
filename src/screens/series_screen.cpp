@@ -10,6 +10,7 @@
 #include "screens/item_meta.hpp"
 #include "screens/widgets/episode_row.hpp"
 #include "screens/widgets/item_card.hpp"
+#include "screens/main_screen.hpp"
 #include "ui/root.hpp"
 #include "ui/widgets/list_menu.hpp"
 #include "ui/widgets/row_carousel.hpp"
@@ -33,6 +34,7 @@ std::string seasonTitle(const jf::BaseItem& s, bool shortForm) {
 
 SeriesScreen::SeriesScreen(std::string seriesId, std::string seasonId)
     : seriesId_(std::move(seriesId)), preferredSeason_(std::move(seasonId)) {
+    onAppMenu = [] { showAppMenu(); };
     backdrop_ = add<Backdrop>();
     backdrop_->setFrame({0, 0, theme::layout::screenWidth, theme::layout::screenHeight});
     backdrop_->setIntensity(1.0f);

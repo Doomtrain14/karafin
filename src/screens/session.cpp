@@ -58,12 +58,17 @@ void enterApp(jf::ClientPtr client) {
     jf::setCurrentClient(client);
     installHandlers(client);
     jf::AccountStore::instance().markUsed(client->serverId(), client->userId(), platform::switchProfileId());
+    // Diagnosis: the steps up to a settled home screen are written at once (see log::syncFor).
+    log::syncFor(12.0);
+    log::mark("screens", "entering main screen (online)");
     resetStack(std::make_unique<MainScreen>(MainMode::Online));
+    log::mark("screens", "main screen created");
 }
 
 void enterOffline(jf::ClientPtr client) {
     g_offline = true;
     if (client) jf::setCurrentClient(client);
+    log::mark("screens", "entering main screen (offline)");
     resetStack(std::make_unique<MainScreen>(MainMode::Offline));
 }
 
@@ -86,6 +91,7 @@ void goToLogin(const std::string& serverId) {
         return;
     }
     g_offline = false;
+    log::mark("screens", "opening sign-in");
     resetStack(std::make_unique<LoginScreen>(jf::Client::fromStored(*server)));
 }
 

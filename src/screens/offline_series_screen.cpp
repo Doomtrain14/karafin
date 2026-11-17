@@ -7,6 +7,7 @@
 
 #include "screens/common.hpp"
 #include "screens/widgets/download_rows.hpp"
+#include "screens/main_screen.hpp"
 #include "ui/root.hpp"
 #include "ui/widgets/dialog.hpp"
 
@@ -21,6 +22,7 @@ constexpr float kPageY = 200;
 
 OfflineSeriesScreen::OfflineSeriesScreen(std::string serverId, std::string seriesId)
     : serverId_(std::move(serverId)), seriesId_(std::move(seriesId)) {
+    onAppMenu = [] { showAppMenu(); };
     poster_ = add<ImageView>();
     poster_->setFrame({theme::layout::marginX, 40, 96, 144});
     poster_->setRadius(theme::radius::md);
@@ -127,7 +129,6 @@ void OfflineSeriesScreen::bindRow(OfflineItemRow* row, const dl::DownloadInfo& i
                                     if (ok) dl::DownloadManager::instance().remove(key);
                                 }));
     };
-    row->refreshHints();
 }
 
 void OfflineSeriesScreen::refreshChrome() {

@@ -12,6 +12,7 @@
 #include "screens/widgets/error_row.hpp"
 #include "screens/widgets/item_card.hpp"
 #include "screens/widgets/skeleton.hpp"
+#include "ui/actions.hpp"
 #include "ui/root.hpp"
 #include "ui/widgets/button.hpp"
 #include "ui/widgets/row_carousel.hpp"
@@ -89,8 +90,6 @@ public:
             const float cx = 62 + (empty || !layout_ ? 0.0f : layout_->width + 3);
             r.fillRect({cx, b.h * 0.5f - 12, 2, 24}, color::accentBright);
         }
-        // Y glyph hint on the right.
-        drawButtonGlyph(r, Key::Y, {b.w - 30, b.h * 0.5f}, 24, Color::white(0.18f + 0.5f * f), color::background);
     }
 
 private:
@@ -125,7 +124,11 @@ SearchSection::SearchSection() {
     status_ = add<StatusView>();
     status_->setFrame({0, kPageY + 60, theme::layout::screenWidth, theme::layout::screenHeight - kPageY - 120});
     setRememberedFocus(field_);
-    setHints({{Key::Y, "Search"}});
+    actions = [this](ActionMenu& m) {
+        m.section("Search");
+        m.add("Search", gfx::Icon::Search, guard([this] { openKeyboard(); }), query_);
+        if (!query_.empty()) m.add("Clear search", gfx::Icon::Close, guard([this] { setQuery({}); }));
+    };
     showIdle();
 }
 
@@ -137,14 +140,6 @@ void SearchSection::onSectionShown(bool first) {
         showSkeletons();
         run();
     }
-}
-
-bool SearchSection::onInput(const InputEvent& e) {
-    if (e.pressed() && e.button == Key::Y) {
-        openKeyboard();
-        return true;
-    }
-    return SectionView::onInput(e);
 }
 
 void SearchSection::openKeyboard() {

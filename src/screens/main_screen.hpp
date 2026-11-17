@@ -38,8 +38,11 @@ public:
     explicit MainScreen(MainMode mode, Section initial = Section::Home);
 
     void showSection(Section section);
+    // Back to this screen (popping pages above it), shows `section` and focuses its content.
+    void navigateTo(Section section);
     Section current() const { return current_; }
     MainMode mode() const { return mode_; }
+    const std::vector<Section>& tabs() const { return tabs_; }
 
     void onShow() override;
     void onHide() override;
@@ -61,5 +64,10 @@ private:
     ui::TabBar* tabBar_ = nullptr;
     bool visibleNow_ = false;
 };
+
+// The main screen in the navigation stack (null before sign-in).
+MainScreen* mainScreen();
+// + menu: sections, session and app commands. Browsing screens set it as Screen::onAppMenu.
+void showAppMenu();
 
 }  // namespace karafin::screens

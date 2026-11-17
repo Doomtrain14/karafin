@@ -10,21 +10,29 @@ namespace {
 constexpr float kRowHeight = 54;
 constexpr float kRowHeightTall = 66;
 constexpr float kRowPadX = 18;
+constexpr float kHeadingHeight = 30;
+constexpr float kHeadingGap = 14;  // extra space above every heading but the first row
 }  // namespace
 
 class ListMenu::Row : public View {
 public:
     Row(ListMenu* menu, size_t index) : menu_(menu), index_(index) {
-        setFocusable(true);
+        setFocusable(!menu->items_[index].heading);
         setCullMargin(4);
     }
 
     Vec2 measure(Vec2 available) override {
         const ListItem& it = menu_->items_[index_];
+        if (it.heading) return {available.x, kHeadingHeight + (index_ > 0 ? kHeadingGap : 0.0f)};
         return {available.x, it.subtitle.empty() ? kRowHeight : kRowHeightTall};
     }
 
-    void onFocus() override { focus_.springTo(1.0f, theme::motion::snappy); }
+    void onFocus() override {
+        focus_.springTo(1.0f, theme::motion::snappy);
+        const ListItem& item = menu_->items_[index_];
+        if (item.enabled && (item.onSelect || menu_->onSelect)) setHints({{Key::A, "Select"}});
+        else setHints({});
+    }
     void onBlur() override { focus_.springTo(0.0f, theme::motion::snappy); }
     bool activate() override {
         if (!menu_->items_[index_].enabled) return false;
@@ -39,9 +47,16 @@ public:
     void draw(Renderer& r) override {
         using namespace theme;
         const ListItem& it = menu_->items_[index_];
+        if (it.heading) {
+            auto t = gfx::text::layout(it.title, type::overline, {.maxWidth = std::max(10.0f, width() - kRowPadX * 2)});
+            r.drawText(*t, {kRowPadX, height() - t->height - 8}, color::textTertiary);
+            return;
+        }
         const float f = std::clamp(focus_.value(), 0.0f, 1.0f);
         const float alphaMul = it.enabled ? 1.0f : 0.4f;
-        const Color ink = Color::lerp(color::textPrimary, color::textOnLight, f).mulAlpha(alphaMul);
+        const Color ink = (it.destructive ? Color::lerp(color::danger, Color::hex(0xB3262D), f)
+                                          : Color::lerp(color::textPrimary, color::textOnLight, f))
+                              .mulAlpha(alphaMul);
         const Color sub = Color::lerp(color::textSecondary, Color(0.04f, 0.04f, 0.07f, 0.62f), f).mulAlpha(alphaMul);
         float x = kRowPadX;
         const float h = height();
@@ -64,6 +79,19 @@ public:
             right -= 12;
         }
         const float maxW = std::max(10.0f, right - x);
+        if (it.drawTitleArt && it.titleArtHeight > 0) {
+            const float th = it.titleArtHeight;
+            if (it.subtitle.empty()) {
+                it.drawTitleArt(r, {x, (h - th) * 0.5f, maxW, th}, f);
+            } else {
+                auto s = gfx::text::layout(it.subtitle, type::caption, {.maxWidth = maxW});
+                const float gap = 6;
+                const float y = (h - th - gap - s->height) * 0.5f;
+                it.drawTitleArt(r, {x, y, maxW, th}, f);
+                r.drawText(*s, {x, y + th + gap}, sub);
+            }
+            return;
+        }
         auto title = gfx::text::layout(it.title, type::headline, {.maxWidth = maxW});
         if (it.subtitle.empty()) {
             r.drawText(*title, {x, (h - title->height) * 0.5f}, ink);
@@ -99,7 +127,7 @@ void ListMenu::setItems(std::vector<ListItem> items, int focusIndex) {
     initialFocus_ = focusIndex;
     if (initialFocus_ < 0) {
         for (size_t i = 0; i < items_.size(); ++i)
-            if (items_[i].checked) {
+            if (items_[i].checked && !items_[i].heading) {
                 initialFocus_ = static_cast<int>(i);
                 break;
             }
@@ -188,6 +216,12 @@ std::unique_ptr<SideSheet> SideSheet::make(std::string title, std::vector<ListIt
     return sheet;
 }
 
+void SideSheet::setTitleArt(float height, std::function<void(Renderer&, const Rect&)> art) {
+    titleArtHeight_ = height;
+    titleArt_ = std::move(art);
+    title_->setVisible(!titleArt_);
+}
+
 void SideSheet::layout() {
     const float w = panelWidth_;
     panel_->setFrame({width() - w, 0, w, height()});
@@ -199,7 +233,8 @@ void SideSheet::layout() {
         y += 26;
     }
     y += 14;
-    menu_->setFrame({pad - 8, y, w - (pad - 8) * 2, height() - y - 32});
+    menu_->setFrame({pad - 8, y, w - (pad - 8) * 2,
+                     std::max(0.0f, height() - y - theme::layout::hintBarHeight - 12)});
 }
 
 void SideSheet::update(float dt) {
@@ -214,6 +249,10 @@ void SideSheet::draw(Renderer& r) {
     r.drawShadow(p, 0, 50, Color::black(0.6f * std::clamp(appear(), 0.0f, 1.0f)), {-10, 0});
     r.fillRect(p, gfx::Gradient::horizontal(Color::hex(0x16161F, 0.97f), Color::hex(0x101017, 0.98f)));
     r.fillRect({p.x, p.y, 1, p.h}, theme::color::stroke);
+    if (titleArt_) {
+        const Rect t = title_->frame().translated({p.x, p.y});
+        titleArt_(r, {t.x, t.y + (t.h - titleArtHeight_) * 0.5f, t.w, titleArtHeight_});
+    }
 }
 
 }  // namespace karafin::ui

@@ -13,7 +13,7 @@ namespace karafin::screens {
 
 // Episode list entry: 16:9 still with progress / watched check, number + title, runtime and
 // rating, two lines of overview, and a compact download button on the right.
-// A plays (resume prompt), X opens the episode page, Y toggles watched.
+// A plays (resume prompt); X lists play / details / watched actions.
 class EpisodeRow : public ui::View {
 public:
     static constexpr float kHeight = 132;
@@ -31,7 +31,6 @@ public:
     void layout() override;
     void onFocus() override;
     void onBlur() override;
-    bool onInput(const ui::InputEvent& e) override;
     void update(float dt) override;
     void draw(ui::Renderer& r) override;
     void drawOverlay(ui::Renderer& r) override;

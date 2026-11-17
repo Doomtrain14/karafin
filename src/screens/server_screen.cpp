@@ -15,6 +15,7 @@
 #include "screens/login_screen.hpp"
 #include "screens/session.hpp"
 #include "screens/widgets/action_row.hpp"
+#include "ui/actions.hpp"
 #include "ui/root.hpp"
 #include "ui/widgets/dialog.hpp"
 
@@ -115,20 +116,30 @@ void ServerScreen::rebuild() {
                 detail = std::format("{} user{}", s.users.size(), s.users.size() == 1 ? "" : "s");
             auto* row = static_cast<ActionRow*>(box->addChild(std::make_unique<ActionRow>(
                 gfx::Icon::Server, s.name.empty() ? s.url : s.name, s.url, detail)));
-            row->setHints({{Key::Y, "Remove"}});
             const jf::StoredServer server = s;
             row->onActivate = [server] {
                 nav().push(std::make_unique<LoginScreen>(jf::Client::fromStored(server)));
             };
-            row->onSecondary = [this, server] {
-                present(Dialog::confirm("Remove server?",
-                                        "\"" + (server.name.empty() ? server.url : server.name) +
-                                            "\" and its saved sign-ins will be forgotten. Downloads stay on the SD card.",
-                                        "Remove", "Cancel", guard([this, id = server.id](bool ok) {
-                                            if (!ok) return;
-                                            jf::AccountStore::instance().removeServer(id);
-                                            timeline().after(0.0f, [this] { rebuild(); }, lifetime());
-                                        })));
+            row->actions = [this, server](ActionMenu& m) {
+                const std::string name = server.name.empty() ? server.url : server.name;
+                m.setTitle(name, "Saved server");
+                m.section("Server").add("Sign in", gfx::Icon::User, [server] {
+                    nav().push(std::make_unique<LoginScreen>(jf::Client::fromStored(server)));
+                });
+                Action remove;
+                remove.title = "Remove server";
+                remove.icon = gfx::Icon::Trash;
+                remove.destructive = true;
+                remove.run = guard([this, server, name] {
+                    present(Dialog::confirm("Remove server?",
+                                            "\"" + name + "\" and its saved sign-ins will be forgotten. Downloads stay on the SD card.",
+                                            "Remove", "Cancel", guard([this, id = server.id](bool ok) {
+                                                if (!ok) return;
+                                                jf::AccountStore::instance().removeServer(id);
+                                                timeline().after(0.0f, [this] { rebuild(); }, lifetime());
+                                            })));
+                });
+                m.add(std::move(remove));
             };
         }
     }
@@ -240,10 +251,7 @@ void ServerScreen::draw(Renderer& r) {
     const Vec2 g{260 + std::sin(t_ * 0.3f) * 40.0f, 300 + std::cos(t_ * 0.25f) * 30.0f};
     r.drawShadow({g.x - 140, g.y - 140, 280, 280}, 140, 280, color::accentDeep.withAlpha(0.28f));
     r.fillRect({kListX - 1, 60, 1, b.h - 120}, color::separator);
-    const gfx::TextStyle brand{40, gfx::FontWeight::Display, 1.0f, -1.0f};
-    auto l = gfx::text::layout("karafin", brand);
-    r.drawText(*l, {layout::marginX, 180}, color::textPrimary);
-    r.fillCircle({layout::marginX + l->width + 8, 180 + l->firstBaseline - 6}, 6, color::accent);
+    wordmark_.draw(r, {layout::marginX, 186});
 }
 
 }  // namespace karafin::screens

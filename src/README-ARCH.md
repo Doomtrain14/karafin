@@ -47,7 +47,7 @@ includes only core).
 | Header | Use |
 | --- | --- |
 | `core/app.hpp` | `App::instance()`, `AppDelegate` (onStart/onEvent/onUpdate(dt)/onRender/onDisplayChanged/onFocusChanged/onStop), `DisplayInfo` (1280x720 logical, `scale` 1.0 or 1.5), `App::glProcAddress` for mpv |
-| `core/log.hpp` | `log::info("tag", "fmt {}", x)` (+ trace/debug/warn/error) -> `sdmc:/switch/karafin/log.txt` and nxlink |
+| `core/log.hpp` | `log::info("tag", "fmt {}", x)` (+ trace/debug/warn/error; `log::mark` = info flushed at once for crash breadcrumbs) -> `sdmc:/switch/karafin/log.txt` and nxlink |
 | `core/settings.hpp` | `Settings::instance().get<T>("module.key", fallback)` / `.set("module.key", v)`; debounced auto-save |
 | `core/thread_pool.hpp` | `workers().post(fn)`, `workers().submit(fn) -> std::future` |
 | `core/thread.hpp` | `Thread(ThreadOptions{name, stackSize, priority, core}, fn)` for long-lived loops |

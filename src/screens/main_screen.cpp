@@ -11,8 +11,11 @@
 #include "screens/search_section.hpp"
 #include "screens/session.hpp"
 #include "screens/settings_section.hpp"
+#include "screens/wordmark.hpp"
+#include "ui/actions.hpp"
 #include "ui/battery_indicator.hpp"
 #include "ui/root.hpp"
+#include "ui/widgets/dialog.hpp"
 
 namespace karafin::screens {
 
@@ -31,9 +34,70 @@ const char* sectionTitle(Section s) {
     return "";
 }
 size_t idx(Section s) { return static_cast<size_t>(s); }
+
+gfx::Icon sectionIcon(Section s) {
+    switch (s) {
+        case Section::Home: return gfx::Icon::Home;
+        case Section::Libraries: return gfx::Icon::Library;
+        case Section::Search: return gfx::Icon::Search;
+        case Section::Downloads: return gfx::Icon::Download;
+        case Section::Settings: return gfx::Icon::Settings;
+        case Section::Count: break;
+    }
+    return gfx::Icon::None;
+}
+
+void showControlsGuide() {
+    present(Dialog::alert("Controls",
+                          "A  Play / resume a title or episode, or select\n"
+                          "X  Actions for the selected item and this page\n"
+                          "+  App menu: sections, reconnect and quit\n"
+                          "B  Back / close a menu\n"
+                          "L / R  Switch tabs or seasons\n"
+                          "ZL / ZR  Page through long lists\n\n"
+                          "In the player, the on-screen buttons show the controls."));
+}
 }  // namespace
 
-// Brand, scrim and account chip. The tab bar is a sibling drawn on top.
+MainScreen* mainScreen() {
+    for (size_t i = 0; i < nav().depth(); ++i)
+        if (auto* m = dynamic_cast<MainScreen*>(nav().at(i))) return m;
+    return nullptr;
+}
+
+void showAppMenu() {
+    MainScreen* main = mainScreen();
+    if (!main) return;
+    const bool onMain = nav().top() == main;
+    ActionMenu menu;
+    menu.setTitle("Karafin", onMain ? std::string("Menu") : std::string("Menu - leaves this page"));
+    auto mark = std::make_shared<Wordmark>(26);
+    menu.setTitleArt(mark->height(), [mark](Renderer& r, const Rect& box) { mark->draw(r, {box.x, box.y}); });
+    auto addSection = [&](Section s) {
+        Action a;
+        a.title = sectionTitle(s);
+        a.icon = sectionIcon(s);
+        a.checked = onMain && main->current() == s;
+        a.run = [s] {
+            if (MainScreen* m = mainScreen()) m->navigateTo(s);
+        };
+        menu.add(std::move(a));
+    };
+    menu.section("Navigate");
+    for (Section s : main->tabs())
+        if (s != Section::Downloads && s != Section::Settings) addSection(s);
+    menu.section("Manage");
+    addSection(Section::Downloads);
+    addSection(Section::Settings);
+    menu.section("Application");
+    if (main->mode() == MainMode::Offline)
+        menu.add("Reconnect to server", gfx::Icon::Refresh, [] { restartSession(); });
+    menu.add("Controls", gfx::Icon::Info, [] { showControlsGuide(); });
+    menu.add("Quit Karafin", gfx::Icon::Exit, [] { root().confirmQuit(); });
+    presentActions(std::move(menu), Key::Plus);
+}
+
+// Wordmark, scrim and account chip. The tab bar is a sibling drawn on top.
 class MainScreen::Header : public View {
 public:
     explicit Header(MainMode mode) : mode_(mode) {
@@ -57,11 +121,7 @@ public:
         const float s = std::clamp(scrim, 0.0f, 1.0f);
         r.fillRect({0, 0, width(), 140}, gfx::Gradient::vertical(bg.withAlpha(0.55f + 0.4f * s), bg.withAlpha(0.0f)));
 
-        // Wordmark with an accent dot.
-        const gfx::TextStyle brand{28, gfx::FontWeight::Display, 1.0f, -0.8f};
-        auto l = gfx::text::layout("karafin", brand);
-        r.drawText(*l, {layout::marginX, 30}, color::textPrimary);
-        r.fillCircle({layout::marginX + l->width + 6, 30 + l->firstBaseline - 4}, 4, color::accent);
+        wordmark_.draw(r, {layout::marginX, 47 - wordmark_.height() * 0.5f});
 
         const float right = width() - layout::marginX;
         float rightEdge = right;
@@ -97,6 +157,7 @@ public:
 
 private:
     MainMode mode_;
+    Wordmark wordmark_{24};
     std::string userName_;
     gfx::ImagePtr avatar_;
     BatteryIndicator battery_;
@@ -125,12 +186,8 @@ MainScreen::MainScreen(MainMode mode, Section initial) : mode_(mode) {
         if (i < tabs_.size()) showSection(tabs_[i]);
     };
 
-    if (mode_ == MainMode::Offline) {
-        addShortcut(Key::Minus, [] { restartSession(); });
-        setHints({{Key::L, "Section"}, {Key::Minus, "Reconnect"}});
-    } else {
-        setHints({{Key::L, "Section"}});
-    }
+    setHints({{Key::L, "Previous tab"}, {Key::R, "Next tab"}});
+    onAppMenu = [] { showAppMenu(); };
     current_ = initial;
     showSection(initial);
 }
@@ -139,6 +196,14 @@ size_t MainScreen::tabIndex(Section s) const {
     for (size_t i = 0; i < tabs_.size(); ++i)
         if (tabs_[i] == s) return i;
     return 0;
+}
+
+void MainScreen::navigateTo(Section s) {
+    if (nav().top() != this) nav().popTo(this);
+    showSection(s);
+    SectionView* v = sections_[idx(s)];
+    View* f = v ? v->defaultFocus() : nullptr;
+    focus().setFocus(f ? f : tabBar_->defaultFocus());
 }
 
 SectionView* MainScreen::ensure(Section s) {

@@ -24,14 +24,11 @@ public:
     void setChevron(bool v) { chevron_ = v; }
     void setBusy(bool v) { busy_ = v; }
 
-    // Y on the focused row (e.g. "Remove"); set a matching hint with setHints().
-    std::function<void()> onSecondary;
 
     ui::Vec2 measure(ui::Vec2 available) override;
     void onFocus() override;
     void onBlur() override;
     bool activate() override;
-    bool onInput(const ui::InputEvent& e) override;
     void update(float dt) override;
     void draw(ui::Renderer& r) override;
 

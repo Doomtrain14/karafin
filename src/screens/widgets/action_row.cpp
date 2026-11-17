@@ -58,15 +58,6 @@ bool ActionRow::activate() {
     return View::activate();
 }
 
-bool ActionRow::onInput(const InputEvent& e) {
-    if (e.pressed() && e.button == Key::Y && focused() && onSecondary) {
-        auto fn = onSecondary;
-        fn();
-        return true;
-    }
-    return View::onInput(e);
-}
-
 void ActionRow::update(float dt) {
     focus_.update(dt);
     if (busy_) spin_ = std::fmod(spin_ + dt * 1.3f, 1.0f);

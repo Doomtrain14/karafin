@@ -342,6 +342,18 @@ bool waitForPendingRoom(const CancelToken& cancel) {
 
 ImageCache::Result::~Result() { releasePending(charged); }
 
+namespace {
+// Memory key for log::step lines, without the URL's query (it can carry an ApiKey).
+std::string traceName(std::string_view key) {
+    const size_t q = key.find('?');
+    if (q == std::string_view::npos) return std::string(key);
+    const size_t bar = key.find('|', q);
+    std::string out(key.substr(0, q));
+    if (bar != std::string_view::npos) out.append(key.substr(bar));
+    return out;
+}
+}  // namespace
+
 struct ImageCacheAccess {
     using Result = ImageCache::Result;
 
@@ -358,11 +370,13 @@ struct ImageCacheAccess {
         // Premultiplied before resampling/blurring (averaging straight-alpha pixels bleeds the
         // color of transparent texels into edges: dark halos around logos) and already reduced to
         // the display size, so the blur below only touches output pixels.
+        log::step("image", "decode {} ({} bytes)", traceName(res->key), bytes.size());
         auto decoded = decodeFitted(bytes, spec.width, spec.height, spec.fit);
         if (!decoded || decoded->empty()) {
             res->error = "decode failed";
             return res;
         }
+        log::step("image", "decoded {} -> {}x{}", traceName(res->key), decoded->width, decoded->height);
         Pixmap pix = std::move(*decoded);
         if (spec.blur > 0) {
             // A blurred image has no detail to keep: blur a copy shrunk by up to sigma (at most
@@ -598,6 +612,7 @@ void ImageCache::start(ImageRef& ref) {
     std::string key = ref.key_;
     ref.cancel_.reset();
     CancelToken cancel = ref.cancel_;
+    log::step("image", "load {}", traceName(key));
 
     if (isLocal(req.url)) {
         workers().post([key, gen, spec, url = req.url, cancel] {
@@ -668,6 +683,7 @@ void ImageCache::fail(ImageRef& ref, const Result& res) {
     ++ref.failures_;
     ref.transientFailure_ = res.transient;
     log::debug("image", "load failed {}: {}", ref.request_.url, res.error);
+    log::step("image", "failed {}: {}", traceName(ref.key_), res.error);
     settle(ref);
 }
 
@@ -702,6 +718,7 @@ void ImageCache::finishUpload(ImageRef& ref, Result& res) {
     lru_.push_front(&ref);
     ref.lruIt_ = lru_.begin();
     ref.inLru_ = true;
+    log::step("image", "ready {}", traceName(ref.key_));
     settle(ref);
 }
 
@@ -757,7 +774,10 @@ void ImageCache::update() {
                 continue;
             }
             const size_t rowBytes = static_cast<size_t>(pix.width) * 4;
-            if (!res.texture) res.texture = Texture::create(pix.width, pix.height, TextureFormat::RGBA8, nullptr);
+            if (!res.texture) {
+                log::step("image", "upload {} {}x{}", traceName(res.key), pix.width, pix.height);
+                res.texture = Texture::create(pix.width, pix.height, TextureFormat::RGBA8, nullptr);
+            }
             const size_t room = uploadBytesPerFrame_ > bytes ? uploadBytesPerFrame_ - bytes : 0;
             const size_t bandRows = std::max<size_t>(1, std::min(room, kUploadBandBytes) / rowBytes);
             const int rows = static_cast<int>(std::min<size_t>(bandRows, static_cast<size_t>(pix.height - res.rowsUploaded)));

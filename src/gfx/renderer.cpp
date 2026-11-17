@@ -704,7 +704,8 @@ void Renderer::fillShimmer(const Rect& r, float radius, Color base, float phase,
     emit(q);
 }
 
-void Renderer::drawTexture(const Texture& tex, const Rect& dst, const Rect& uv, Color tint, float radius) {
+void Renderer::drawTexture(const Texture& tex, const Rect& dst, const Rect& uv, Color tint, float radius,
+                           bool antialias) {
     if (dst.empty()) return;
     Quad q;
     q.center = dst.center();
@@ -712,7 +713,7 @@ void Renderer::drawTexture(const Texture& tex, const Rect& dst, const Rect& uv, 
     q.texture = &tex;
     q.uv = uv;
     q.colors = Gradient::solid(tint);
-    if (radius > 0.0f || transform_.hasRotation()) {
+    if (radius > 0.0f || (antialias && transform_.hasRotation())) {
         q.kind = kRRect;
         q.margin = aaMargin(transform_);
         q.radius = std::clamp(radius, 0.0f, std::min(q.half.x, q.half.y));
@@ -748,7 +749,7 @@ void Renderer::drawImage(const Texture& tex, const Rect& dst, const ImageStyle& 
             box = {dst.x + (dst.w - w) * 0.5f, dst.y, w, dst.h};
         }
     }
-    drawTexture(tex, box, uv, style.tint, style.radius);
+    drawTexture(tex, box, uv, style.tint, style.radius, style.antialias);
 }
 
 void Renderer::drawRenderTarget(const RenderTarget& rt, const Rect& dst, float alpha) {

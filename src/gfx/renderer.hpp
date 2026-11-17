@@ -50,6 +50,9 @@ struct ImageStyle {
     Color tint = Color::white();   // multiplied; use alpha for fades
     Vec2 focus = {0.5f, 0.5f};     // which part stays visible when Cover crops (0..1)
     Rect uv = {0, 0, 1, 1};        // source sub-rect in normalized texture coordinates
+    // Under a rotation the quad's edges are anti-aliased. Off: hard edges, for quads that tile
+    // seamlessly along shared edges (the image's own alpha has to soften its outline).
+    bool antialias = true;
 };
 
 class Renderer {
@@ -126,7 +129,7 @@ public:
 
     // ---- Images ---------------------------------------------------------------------------
     void drawTexture(const Texture& tex, const Rect& dst, const Rect& uv = {0, 0, 1, 1},
-                     Color tint = Color::white(), float radius = 0.0f);
+                     Color tint = Color::white(), float radius = 0.0f, bool antialias = true);
     void drawImage(const Texture& tex, const Rect& dst, const ImageStyle& style = {});
     void drawRenderTarget(const RenderTarget& rt, const Rect& dst, float alpha = 1.0f);
 

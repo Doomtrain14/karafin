@@ -20,10 +20,7 @@ public:
     void setCaption(std::string caption) { caption_ = std::move(caption); }
     void setMarked(bool v) { marked_ = v; }
 
-    // Y on the focused tile (e.g. "Forget account").
-    std::function<void()> onSecondary;
 
-    bool onInput(const ui::InputEvent& e) override;
     ui::Vec2 measure(ui::Vec2 available) override;
     void onFocus() override;
     void onBlur() override;

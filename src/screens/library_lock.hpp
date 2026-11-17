@@ -15,6 +15,10 @@ namespace karafin::jellyfin {
 class Client;
 }
 
+namespace karafin::ui {
+class ActionMenu;
+}
+
 namespace karafin::screens {
 
 // In-app lock for chosen libraries, opened with a 4 or 6 step D-pad code (a parental
@@ -62,9 +66,9 @@ public:
     void relock(const std::string& libraryId);
     // Locks every unlocked library again.
     void lockNow();
-    // Lock / unlock / lock again / remove lock options for one library tile. Locking first asks
-    // for a new code if none is set; unlocking and removing a lock need the code.
-    void libraryActions(const jellyfin::BaseItem& library, std::function<void()> onChanged);
+    // Lock / unlock / lock again / remove lock actions for one library tile (X menu). Locking first
+    // asks for a new code if none is set; unlocking and removing a lock need the code.
+    void addLibraryActions(ui::ActionMenu& menu, const jellyfin::BaseItem& library, std::function<void()> onChanged);
     // Set (no code yet) or change (asks for the current one) the code.
     void changeCode(std::function<void()> onDone);
     // Asks for the code, then removes it, every lock and the profile code.

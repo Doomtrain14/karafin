@@ -31,6 +31,7 @@ using gfx::Rect;
 using gfx::Renderer;
 using gfx::Vec2;
 
+class ActionMenu;
 class Screen;
 class View;
 
@@ -212,6 +213,8 @@ public:
     // Activation (A on the focused view, or tap). Default calls onActivate.
     virtual bool activate();
     std::function<void()> onActivate;
+    // Contextual actions for X (see ui/actions.hpp); collected from the focused view up to the scope.
+    std::function<void(ActionMenu&)> actions;
 
     // Hints shown in the hint bar while this view (or a descendant) has focus.
     void setHints(std::vector<Hint> hints) { hints_ = std::move(hints); }
